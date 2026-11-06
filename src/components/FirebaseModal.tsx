@@ -133,6 +133,7 @@ export const FirebaseModal: React.FC<FirebaseModalProps> = ({
     try {
       setIsSyncing(true);
       await saveToFirestore(currentUser.uid, dashboardData);
+      await saveToFirestore('principal', dashboardData);
       setStatusMessage({ text: 'Dados sincronizados com o Cloud Firestore!', type: 'success' });
     } catch (err: any) {
       setStatusMessage({ text: err.message || 'Erro ao sincronizar', type: 'error' });

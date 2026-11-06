@@ -217,22 +217,32 @@ export const DEFAULT_DASHBOARD_ID = 'principal';
 export async function saveToFirestore(
   userId: string = DEFAULT_DASHBOARD_ID,
   dashboardData: any
-): Promise<void> {
-  const firestore = getFirebaseDb();
-  if (!firestore) return;
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const firestore = getFirebaseDb();
+    if (!firestore) return { success: false, error: 'Firestore não inicializado' };
 
-  const docId = userId || DEFAULT_DASHBOARD_ID;
-  const userDocRef = doc(firestore, 'student_dashboards', docId);
-  await setDoc(userDocRef, {
-    ...dashboardData,
-    updatedAt: new Date().toISOString(),
-  }, { merge: true });
+    const docId = userId || DEFAULT_DASHBOARD_ID;
+    const userDocRef = doc(firestore, 'student_dashboards', docId);
+    await setDoc(
+      userDocRef,
+      {
+        ...dashboardData,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+    return { success: true };
+  } catch (err: any) {
+    console.error(`Erro ao salvar no Firestore (doc: ${userId}):`, err);
+    return { success: false, error: err.message || 'Erro ao gravar' };
+  }
 }
 
 // Ouvir alterações em tempo real no Firestore (modo direto ou por usuário)
 export function subscribeToFirestore(
   userId: string = DEFAULT_DASHBOARD_ID,
-  onData: (data: any) => void,
+  onData: (data: any, metadata?: any) => void,
   onError?: (err: Error) => void
 ) {
   const firestore = getFirebaseDb();
@@ -244,7 +254,7 @@ export function subscribeToFirestore(
     userDocRef,
     (snapshot: any) => {
       if (snapshot.exists()) {
-        onData(snapshot.data());
+        onData(snapshot.data(), snapshot.metadata);
       }
     },
     (err: any) => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Course, Task, StudyTopic, StudySession, NotebookNote } from './types';
 import {
   initialCourses,
@@ -46,7 +46,6 @@ export const App: React.FC = () => {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [isFirebaseModalOpen, setIsFirebaseModalOpen] = useState(false);
-  const isSyncingFromCloudRef = useRef(false);
 
   // Persistence helpers
   const loadState = <T,>(key: string, fallback: T): T => {
@@ -77,6 +76,116 @@ export const App: React.FC = () => {
     loadState('study_calendar_id', 'nicolasplcoelho@gmail.com')
   );
 
+  // Helper para salvar na nuvem de forma direta e sem conflitos
+  const syncEntityToCloud = (key: string, data: any) => {
+    const targetDoc = firebaseUser ? firebaseUser.uid : 'principal';
+    saveToFirestore(targetDoc, { [key]: data });
+    saveToFirestore('principal', { [key]: data });
+  };
+
+  // Handlers para Tópicos de Estudo (Active Recall & Revisões)
+  const handleAddTopic = (newTopic: StudyTopic) => {
+    const updated = [...topics, newTopic];
+    setTopics(updated);
+    localStorage.setItem('study_topics', JSON.stringify(updated));
+    syncEntityToCloud('topics', updated);
+  };
+
+  const handleUpdateTopic = (updatedTopic: StudyTopic) => {
+    const updated = topics.map((t) => (t.id === updatedTopic.id ? updatedTopic : t));
+    setTopics(updated);
+    localStorage.setItem('study_topics', JSON.stringify(updated));
+    syncEntityToCloud('topics', updated);
+  };
+
+  const handleDeleteTopic = (id: string) => {
+    const updated = topics.filter((t) => t.id !== id);
+    setTopics(updated);
+    localStorage.setItem('study_topics', JSON.stringify(updated));
+    syncEntityToCloud('topics', updated);
+  };
+
+  // Handlers para Disciplinas
+  const handleAddCourse = (newCourse: Course) => {
+    const updated = [...courses, newCourse];
+    setCourses(updated);
+    localStorage.setItem('study_courses', JSON.stringify(updated));
+    syncEntityToCloud('courses', updated);
+  };
+
+  const handleUpdateCourse = (updatedCourse: Course) => {
+    const updated = courses.map((c) => (c.id === updatedCourse.id ? updatedCourse : c));
+    setCourses(updated);
+    localStorage.setItem('study_courses', JSON.stringify(updated));
+    syncEntityToCloud('courses', updated);
+  };
+
+  const handleDeleteCourse = (id: string) => {
+    const updated = courses.filter((c) => c.id !== id);
+    setCourses(updated);
+    localStorage.setItem('study_courses', JSON.stringify(updated));
+    syncEntityToCloud('courses', updated);
+  };
+
+  // Handlers para Tarefas
+  const handleAddTask = (newTask: Task) => {
+    const updated = [...tasks, newTask];
+    setTasks(updated);
+    localStorage.setItem('study_tasks', JSON.stringify(updated));
+    syncEntityToCloud('tasks', updated);
+  };
+
+  const handleUpdateTask = (updatedTask: Task) => {
+    const updated = tasks.map((t) => (t.id === updatedTask.id ? updatedTask : t));
+    setTasks(updated);
+    localStorage.setItem('study_tasks', JSON.stringify(updated));
+    syncEntityToCloud('tasks', updated);
+  };
+
+  const handleDeleteTask = (id: string) => {
+    const updated = tasks.filter((t) => t.id !== id);
+    setTasks(updated);
+    localStorage.setItem('study_tasks', JSON.stringify(updated));
+    syncEntityToCloud('tasks', updated);
+  };
+
+  // Handlers para Sessões de Estudo (Pomodoro)
+  const handleAddSession = (newSession: StudySession) => {
+    const updated = [newSession, ...sessions];
+    setSessions(updated);
+    localStorage.setItem('study_sessions', JSON.stringify(updated));
+    syncEntityToCloud('sessions', updated);
+  };
+
+  const handleDeleteSession = (id: string) => {
+    const updated = sessions.filter((s) => s.id !== id);
+    setSessions(updated);
+    localStorage.setItem('study_sessions', JSON.stringify(updated));
+    syncEntityToCloud('sessions', updated);
+  };
+
+  // Handlers para Anotações (Notebook)
+  const handleAddNote = (newNote: NotebookNote) => {
+    const updated = [newNote, ...notes];
+    setNotes(updated);
+    localStorage.setItem('study_notes', JSON.stringify(updated));
+    syncEntityToCloud('notes', updated);
+  };
+
+  const handleDeleteNote = (id: string) => {
+    const updated = notes.filter((n) => n.id !== id);
+    setNotes(updated);
+    localStorage.setItem('study_notes', JSON.stringify(updated));
+    syncEntityToCloud('notes', updated);
+  };
+
+  // Handler para Google Calendar ID
+  const handleUpdateCalendarId = (newId: string) => {
+    setCalendarId(newId);
+    localStorage.setItem('study_calendar_id', newId);
+    syncEntityToCloud('calendarId', newId);
+  };
+
   // Listen to Firebase Auth state
   useEffect(() => {
     const unsub = onUserChanged((user) => {
@@ -90,73 +199,40 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (!firebaseUser || !isEmailAllowed(firebaseUser.email)) return;
 
-    const unsub = subscribeToFirestore('principal', (data) => {
+    const docId = firebaseUser.uid;
+    const unsub = subscribeToFirestore(docId, (data, metadata) => {
       if (!data) return;
-      isSyncingFromCloudRef.current = true;
-      if (data.courses && Array.isArray(data.courses) && data.courses.length > 0) {
+      // Ignora evento disparado pelas nossas próprias alterações em andamento locais
+      if (metadata?.hasPendingWrites) return;
+
+      if (Array.isArray(data.courses)) {
         setCourses(data.courses);
+        localStorage.setItem('study_courses', JSON.stringify(data.courses));
       }
-      if (data.tasks && Array.isArray(data.tasks)) setTasks(data.tasks);
-      if (data.topics && Array.isArray(data.topics)) setTopics(data.topics);
-      if (data.sessions && Array.isArray(data.sessions)) setSessions(data.sessions);
-      if (data.notes && Array.isArray(data.notes)) setNotes(data.notes);
-      if (data.calendarId) setCalendarId(data.calendarId);
-      setTimeout(() => {
-        isSyncingFromCloudRef.current = false;
-      }, 500);
+      if (Array.isArray(data.tasks)) {
+        setTasks(data.tasks);
+        localStorage.setItem('study_tasks', JSON.stringify(data.tasks));
+      }
+      if (Array.isArray(data.topics)) {
+        setTopics(data.topics);
+        localStorage.setItem('study_topics', JSON.stringify(data.topics));
+      }
+      if (Array.isArray(data.sessions)) {
+        setSessions(data.sessions);
+        localStorage.setItem('study_sessions', JSON.stringify(data.sessions));
+      }
+      if (Array.isArray(data.notes)) {
+        setNotes(data.notes);
+        localStorage.setItem('study_notes', JSON.stringify(data.notes));
+      }
+      if (typeof data.calendarId === 'string') {
+        setCalendarId(data.calendarId);
+        localStorage.setItem('study_calendar_id', data.calendarId);
+      }
     });
 
     return () => unsub();
   }, [firebaseUser]);
-
-  // Sync with LocalStorage & Firestore (salva automaticamente na nuvem)
-  useEffect(() => {
-    localStorage.setItem('study_courses', JSON.stringify(courses));
-    if (!isSyncingFromCloudRef.current) {
-      saveToFirestore('principal', { courses });
-      if (firebaseUser) saveToFirestore(firebaseUser.uid, { courses });
-    }
-  }, [courses, firebaseUser]);
-
-  useEffect(() => {
-    localStorage.setItem('study_tasks', JSON.stringify(tasks));
-    if (!isSyncingFromCloudRef.current) {
-      saveToFirestore('principal', { tasks });
-      if (firebaseUser) saveToFirestore(firebaseUser.uid, { tasks });
-    }
-  }, [tasks, firebaseUser]);
-
-  useEffect(() => {
-    localStorage.setItem('study_topics', JSON.stringify(topics));
-    if (!isSyncingFromCloudRef.current) {
-      saveToFirestore('principal', { topics });
-      if (firebaseUser) saveToFirestore(firebaseUser.uid, { topics });
-    }
-  }, [topics, firebaseUser]);
-
-  useEffect(() => {
-    localStorage.setItem('study_sessions', JSON.stringify(sessions));
-    if (!isSyncingFromCloudRef.current) {
-      saveToFirestore('principal', { sessions });
-      if (firebaseUser) saveToFirestore(firebaseUser.uid, { sessions });
-    }
-  }, [sessions, firebaseUser]);
-
-  useEffect(() => {
-    localStorage.setItem('study_notes', JSON.stringify(notes));
-    if (!isSyncingFromCloudRef.current) {
-      saveToFirestore('principal', { notes });
-      if (firebaseUser) saveToFirestore(firebaseUser.uid, { notes });
-    }
-  }, [notes, firebaseUser]);
-
-  useEffect(() => {
-    localStorage.setItem('study_calendar_id', calendarId);
-    if (!isSyncingFromCloudRef.current) {
-      saveToFirestore('principal', { calendarId });
-      if (firebaseUser) saveToFirestore(firebaseUser.uid, { calendarId });
-    }
-  }, [calendarId, firebaseUser]);
 
   // Quick stats
   const todayStr = new Date().toISOString().split('T')[0];
@@ -186,12 +262,32 @@ export const App: React.FC = () => {
     reader.onload = (event) => {
       try {
         const parsed = JSON.parse(event.target?.result as string);
-        if (parsed.courses) setCourses(parsed.courses);
-        if (parsed.tasks) setTasks(parsed.tasks);
-        if (parsed.topics) setTopics(parsed.topics);
-        if (parsed.sessions) setSessions(parsed.sessions);
-        if (parsed.notes) setNotes(parsed.notes);
-        alert('✅ Dados restaurados com sucesso!');
+        if (Array.isArray(parsed.courses)) {
+          setCourses(parsed.courses);
+          localStorage.setItem('study_courses', JSON.stringify(parsed.courses));
+          syncEntityToCloud('courses', parsed.courses);
+        }
+        if (Array.isArray(parsed.tasks)) {
+          setTasks(parsed.tasks);
+          localStorage.setItem('study_tasks', JSON.stringify(parsed.tasks));
+          syncEntityToCloud('tasks', parsed.tasks);
+        }
+        if (Array.isArray(parsed.topics)) {
+          setTopics(parsed.topics);
+          localStorage.setItem('study_topics', JSON.stringify(parsed.topics));
+          syncEntityToCloud('topics', parsed.topics);
+        }
+        if (Array.isArray(parsed.sessions)) {
+          setSessions(parsed.sessions);
+          localStorage.setItem('study_sessions', JSON.stringify(parsed.sessions));
+          syncEntityToCloud('sessions', parsed.sessions);
+        }
+        if (Array.isArray(parsed.notes)) {
+          setNotes(parsed.notes);
+          localStorage.setItem('study_notes', JSON.stringify(parsed.notes));
+          syncEntityToCloud('notes', parsed.notes);
+        }
+        alert('✅ Dados restaurados e sincronizados com sucesso!');
       } catch {
         alert('❌ Erro ao ler arquivo de backup.');
       }
@@ -328,11 +424,9 @@ export const App: React.FC = () => {
             courses={courses}
             tasks={tasks}
             darkMode={darkMode}
-            onAddTask={(newT) => setTasks([...tasks, newT])}
-            onUpdateTask={(updT) =>
-              setTasks(tasks.map((t) => (t.id === updT.id ? updT : t)))
-            }
-            onDeleteTask={(id) => setTasks(tasks.filter((t) => t.id !== id))}
+            onAddTask={handleAddTask}
+            onUpdateTask={handleUpdateTask}
+            onDeleteTask={handleDeleteTask}
             onNavigateTab={(tab) => setActiveTab(tab as any)}
           />
         )}
@@ -341,11 +435,9 @@ export const App: React.FC = () => {
           <CoursesTab
             courses={courses}
             tasks={tasks}
-            onAddCourse={(newC) => setCourses([...courses, newC])}
-            onUpdateCourse={(updC) =>
-              setCourses(courses.map((c) => (c.id === updC.id ? updC : c)))
-            }
-            onDeleteCourse={(id) => setCourses(courses.filter((c) => c.id !== id))}
+            onAddCourse={handleAddCourse}
+            onUpdateCourse={handleUpdateCourse}
+            onDeleteCourse={handleDeleteCourse}
           />
         )}
 
@@ -353,11 +445,9 @@ export const App: React.FC = () => {
           <TasksKanbanTab
             tasks={tasks}
             courses={courses}
-            onAddTask={(newT) => setTasks([...tasks, newT])}
-            onUpdateTask={(updT) =>
-              setTasks(tasks.map((t) => (t.id === updT.id ? updT : t)))
-            }
-            onDeleteTask={(id) => setTasks(tasks.filter((t) => t.id !== id))}
+            onAddTask={handleAddTask}
+            onUpdateTask={handleUpdateTask}
+            onDeleteTask={handleDeleteTask}
           />
         )}
 
@@ -367,7 +457,7 @@ export const App: React.FC = () => {
             tasks={tasks}
             darkMode={darkMode}
             calendarId={calendarId}
-            onUpdateCalendarId={setCalendarId}
+            onUpdateCalendarId={handleUpdateCalendarId}
           />
         )}
 
@@ -375,11 +465,9 @@ export const App: React.FC = () => {
           <ActiveRecallTab
             topics={topics}
             courses={courses}
-            onAddTopic={(newTop) => setTopics([...topics, newTop])}
-            onUpdateTopic={(updTop) =>
-              setTopics(topics.map((t) => (t.id === updTop.id ? updTop : t)))
-            }
-            onDeleteTopic={(id) => setTopics(topics.filter((t) => t.id !== id))}
+            onAddTopic={handleAddTopic}
+            onUpdateTopic={handleUpdateTopic}
+            onDeleteTopic={handleDeleteTopic}
           />
         )}
 
@@ -387,16 +475,16 @@ export const App: React.FC = () => {
           <PomodoroTimerTab
             sessions={sessions}
             courses={courses}
-            onAddSession={(newS) => setSessions([newS, ...sessions])}
-            onDeleteSession={(id) => setSessions(sessions.filter((s) => s.id !== id))}
+            onAddSession={handleAddSession}
+            onDeleteSession={handleDeleteSession}
           />
         )}
 
         {activeTab === 'notes' && (
           <NotebookTab
             notes={notes}
-            onAddNote={(newN) => setNotes([newN, ...notes])}
-            onDeleteNote={(id) => setNotes(notes.filter((n) => n.id !== id))}
+            onAddNote={handleAddNote}
+            onDeleteNote={handleDeleteNote}
           />
         )}
       </main>
