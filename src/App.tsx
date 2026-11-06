@@ -44,6 +44,7 @@ export const App: React.FC = () => {
 
   // Firebase auth & modal state
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [isFirebaseModalOpen, setIsFirebaseModalOpen] = useState(false);
   const isSyncingFromCloudRef = useRef(false);
 
@@ -80,12 +81,15 @@ export const App: React.FC = () => {
   useEffect(() => {
     const unsub = onUserChanged((user) => {
       setFirebaseUser(user);
+      setAuthLoading(false);
     });
     return () => unsub();
   }, []);
 
-  // Real-time Firestore sync listener (Conexão Direta Automática)
+  // Real-time Firestore sync listener (apenas para usuário autorizado)
   useEffect(() => {
+    if (!firebaseUser || !isEmailAllowed(firebaseUser.email)) return;
+
     const unsub = subscribeToFirestore('principal', (data) => {
       if (!data) return;
       isSyncingFromCloudRef.current = true;
@@ -103,7 +107,7 @@ export const App: React.FC = () => {
     });
 
     return () => unsub();
-  }, []);
+  }, [firebaseUser]);
 
   // Sync with LocalStorage & Firestore (salva automaticamente na nuvem)
   useEffect(() => {
@@ -241,6 +245,29 @@ export const App: React.FC = () => {
     },
   ];
 
+  // Tela de Carregamento enquanto valida a sessão Firebase
+  if (authLoading) {
+    return (
+      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#fbfbfa] dark:bg-[#191919] text-[#37352f] dark:text-[#ececed]">
+        <div className="w-16 h-16 bg-white dark:bg-[#202020] border border-[#e9e9e8] dark:border-[#333333] rounded-2xl shadow-sm flex items-center justify-center text-3xl mb-4 select-none animate-pulse">
+          📚
+        </div>
+        <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // Se não estiver logado ou se o e-mail não estiver na whitelist, exibe a Tela de Login
+  if (!firebaseUser || !isEmailAllowed(firebaseUser.email)) {
+    return (
+      <LoginScreen
+        currentUser={firebaseUser}
+        darkMode={darkMode}
+        setDarkMode={setDarkMode}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#fcfbf9] dark:bg-[#191919] text-[#37352f] dark:text-[#d4d4d4] transition-colors pb-16">
       {/* Notion Header Banner */}
@@ -257,6 +284,7 @@ export const App: React.FC = () => {
         onImportData={handleImportData}
         onOpenFirebaseModal={() => setIsFirebaseModalOpen(true)}
         firebaseUser={firebaseUser}
+        onLogout={logoutFirebase}
       />
 
       {/* Main Content Area */}
