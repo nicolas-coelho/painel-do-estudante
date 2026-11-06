@@ -10,7 +10,7 @@ import {
 } from '../firebase';
 import { FirebaseConfig } from '../types';
 import { User } from 'firebase/auth';
-import { Cloud, Check, AlertCircle, LogIn, LogOut, Key, ShieldCheck, X, RefreshCw } from 'lucide-react';
+import { Cloud, Check, AlertCircle, LogIn, LogOut, Key, ShieldCheck, X, RefreshCw, Mail, Send } from 'lucide-react';
 
 interface FirebaseModalProps {
   isOpen: boolean;
@@ -28,6 +28,7 @@ export const FirebaseModal: React.FC<FirebaseModalProps> = ({
   const [isConfiguringKeys, setIsConfiguringKeys] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isSendingDigest, setIsSendingDigest] = useState(false);
 
   const existingConfig = getStoredFirebaseConfig();
   const [apiKey, setApiKey] = useState(existingConfig?.apiKey || '');
@@ -45,6 +46,30 @@ export const FirebaseModal: React.FC<FirebaseModalProps> = ({
   }, []);
 
   if (!isOpen) return null;
+
+  const handleTriggerDailyDigest = async () => {
+    setIsSendingDigest(true);
+    setStatusMessage(null);
+    try {
+      const res = await fetch('/api/daily-digest');
+      const data = await res.json();
+      if (data.success) {
+        setStatusMessage({
+          text: data.message || `Resumo gerado com sucesso para ${data.targetEmail}!`,
+          type: 'success',
+        });
+      } else {
+        setStatusMessage({
+          text: data.error || 'Erro ao processar resumo diário.',
+          type: 'error',
+        });
+      }
+    } catch (err: any) {
+      setStatusMessage({ text: err.message || 'Erro ao disparar resumo', type: 'error' });
+    } finally {
+      setIsSendingDigest(false);
+    }
+  };
 
   const handleSaveConfig = (e: React.FormEvent) => {
     e.preventDefault();
@@ -216,6 +241,35 @@ export const FirebaseModal: React.FC<FirebaseModalProps> = ({
               )}
             </div>
           )}
+        </div>
+
+        {/* Card: Automação de E-mail Diário (Vercel Cron) */}
+        <div className="p-4 bg-[#fcfbf9] dark:bg-[#252525] rounded-xl border border-[#e9e9e8] dark:border-[#2f2f2f] space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs font-semibold text-[#37352f] dark:text-[#f3f3f2]">
+              <Mail className="w-4 h-4 text-blue-500" />
+              <span>Resumo Diário por E-mail (Vercel Cron)</span>
+            </div>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400 font-medium">
+              Todo dia às 08h00
+            </span>
+          </div>
+
+          <p className="text-[11px] text-[#787774] dark:text-[#9b9a97] leading-relaxed">
+            Uma automação na Vercel verifica suas tarefas atrasadas, provas próximas e revisões do dia e envia um relatório consolidado para <b>nicolasplcoelho@gmail.com</b>.
+          </p>
+
+          <div className="pt-1 flex items-center justify-between gap-2">
+            <span className="text-[10px] text-[#9b9a97]">Agendado: <code>0 11 * * *</code> (UTC)</span>
+            <button
+              onClick={handleTriggerDailyDigest}
+              disabled={isSendingDigest}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium shadow-sm transition-all disabled:opacity-50"
+            >
+              <Send className={`w-3.5 h-3.5 ${isSendingDigest ? 'animate-pulse' : ''}`} />
+              <span>{isSendingDigest ? 'Processando...' : 'Testar Envio Agora'}</span>
+            </button>
+          </div>
         </div>
 
         {/* Toggle Credentials Form */}
