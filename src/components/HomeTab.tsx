@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Course, Task, TaskStatus, TaskType } from '../types';
+import { getClassesForDayOfWeek, getEventDateStr, getEventTimeStr } from '../calendarUtils';
+import { getSavedCalendarToken, fetchGoogleCalendarEvents, GoogleCalendarEvent } from '../googleCalendar';
 import {
   Calendar as CalendarIcon,
   CheckCircle2,
@@ -17,6 +19,10 @@ import {
   CalendarDays,
   X,
   Filter,
+  GraduationCap,
+  Video,
+  MapPin,
+  RefreshCw,
 } from 'lucide-react';
 
 interface HomeTabProps {
@@ -66,10 +72,20 @@ export const HomeTab: React.FC<HomeTabProps> = ({
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string>(todayStr);
   const [currentCalendarMonth, setCurrentCalendarMonth] = useState<Date>(new Date());
 
-  // Google Calendar config
+  // Google Calendar config & events
+  const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
   const [calendarId] = useState<string>(() => {
     return localStorage.getItem(LOCAL_STORAGE_CALENDAR_ID) || '';
   });
+
+  useEffect(() => {
+    const savedToken = getSavedCalendarToken();
+    if (savedToken) {
+      fetchGoogleCalendarEvents(savedToken)
+        .then((evts) => setGoogleEvents(evts))
+        .catch((err) => console.log('Google Calendar sync in Home:', err));
+    }
+  }, []);
   const cleanCalendarId = calendarId.trim();
   const encodedId = encodeURIComponent(cleanCalendarId);
   const googleEmbedUrl = cleanCalendarId
@@ -169,8 +185,13 @@ export const HomeTab: React.FC<HomeTabProps> = ({
   };
 
   // Activities for the selected calendar date
+  const selectedDateParts = selectedCalendarDate.split('-').map(Number);
+  const selectedDateObj = selectedDateParts.length === 3 ? new Date(selectedDateParts[0], selectedDateParts[1] - 1, selectedDateParts[2]) : new Date();
+  const selectedDayOfWeek = !isNaN(selectedDateObj.getTime()) ? selectedDateObj.getDay() : -1;
+  const selectedDateClasses = selectedDayOfWeek >= 0 ? getClassesForDayOfWeek(courses, selectedDayOfWeek) : [];
   const selectedDateTasks = tasks.filter((t) => t.dueDate === selectedCalendarDate);
   const selectedDateExams = allExams.filter((e) => e.date === selectedCalendarDate);
+  const selectedDateGoogleEvents = googleEvents.filter((ev) => getEventDateStr(ev) === selectedCalendarDate);
 
   return (
     <div className="space-y-8 animate-fadeIn">
@@ -662,20 +683,32 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                 {/* Days of month */}
                 {Array.from({ length: totalDaysInMonth }).map((_, i) => {
                   const dayNum = i + 1;
+                  const dateObj = new Date(year, month, dayNum);
+                  const dayOfWeek = dateObj.getDay();
                   const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
                   const isToday = dateString === todayStr;
                   const isSelected = dateString === selectedCalendarDate;
 
-                  // Tasks & Exams for this day
-                  const dayTasks = tasks.filter((t) => t.dueDate === dateString);
+                  // 1. Aulas da semana
+                  const dayClasses = getClassesForDayOfWeek(courses, dayOfWeek);
+
+                  // 2. Provas agendadas
                   const dayExams = allExams.filter((e) => e.date === dateString);
-                  const hasActivities = dayTasks.length > 0 || dayExams.length > 0;
+
+                  // 3. Tarefas / entregas
+                  const dayTasks = tasks.filter((t) => t.dueDate === dateString);
+
+                  // 4. Eventos do Google Calendar
+                  const dayGoogle = googleEvents.filter((ev) => getEventDateStr(ev) === dateString);
+
+                  const totalCount = dayClasses.length + dayExams.length + dayTasks.length + dayGoogle.length;
+                  const hasActivities = totalCount > 0;
 
                   return (
                     <button
                       key={dateString}
                       onClick={() => setSelectedCalendarDate(dateString)}
-                      className={`h-16 md:h-20 p-1.5 rounded-xl border flex flex-col justify-between text-left transition-all ${
+                      className={`h-20 md:h-24 p-1.5 rounded-xl border flex flex-col justify-between text-left transition-all ${
                         isSelected
                           ? 'border-blue-600 dark:border-blue-500 bg-blue-50/50 dark:bg-blue-950/30 ring-2 ring-blue-500/20'
                           : isToday
@@ -698,13 +731,14 @@ export const HomeTab: React.FC<HomeTabProps> = ({
 
                         {hasActivities && (
                           <span className="text-[10px] font-mono font-bold text-blue-600 dark:text-blue-400">
-                            {dayTasks.length + dayExams.length}
+                            {totalCount}
                           </span>
                         )}
                       </div>
 
                       {/* Micro activity indicators */}
                       <div className="w-full space-y-0.5 overflow-hidden">
+                        {/* Provas */}
                         {dayExams.map((e) => (
                           <div
                             key={e.exam.id}
@@ -714,6 +748,20 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                             📝 {e.course.code}
                           </div>
                         ))}
+
+                        {/* Aulas da semana */}
+                        {dayClasses.map((cls, idx) => (
+                          <div
+                            key={`cls-${cls.course.id}-${idx}`}
+                            className="text-[9px] font-medium truncate px-1 rounded text-white"
+                            style={{ backgroundColor: cls.course.color }}
+                            title={`Aula: ${cls.course.name} (${cls.course.code}) - ${cls.time}`}
+                          >
+                            🎓 {cls.course.code}
+                          </div>
+                        ))}
+
+                        {/* Tarefas */}
                         {dayTasks.slice(0, 2).map((t) => (
                           <div
                             key={t.id}
@@ -727,9 +775,21 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                             • {t.name}
                           </div>
                         ))}
-                        {dayTasks.length > 2 && (
-                          <div className="text-[8px] text-[#787774] dark:text-[#9b9a97] px-1">
-                            +{dayTasks.length - 2} mais
+
+                        {/* Google Calendar */}
+                        {dayGoogle.slice(0, 1).map((ev) => (
+                          <div
+                            key={ev.id}
+                            className="text-[9px] truncate px-1 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
+                            title={`Google Calendar: ${ev.summary}`}
+                          >
+                            📅 {ev.summary}
+                          </div>
+                        ))}
+
+                        {totalCount > 3 && (
+                          <div className="text-[8px] text-[#787774] dark:text-[#9b9a97] px-1 font-semibold">
+                            +{totalCount - 3} mais
                           </div>
                         )}
                       </div>
@@ -756,11 +816,53 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                   </div>
                 </div>
 
-                {/* List of Exams for the selected date */}
+                {/* 1. Aulas Programadas do Dia */}
+                {selectedDateClasses.length > 0 && (
+                  <div className="space-y-2">
+                    <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <GraduationCap className="w-3.5 h-3.5" />
+                      <span>Aulas da Grade ({selectedDateClasses.length})</span>
+                    </span>
+                    {selectedDateClasses.map(({ course, time, room }, idx) => (
+                      <div
+                        key={`home-cls-${course.id}-${idx}`}
+                        className="p-2.5 rounded-lg border border-[#e9e9e8] dark:border-[#333] bg-[#faf9f6] dark:bg-[#252525] space-y-1"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span
+                            className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold"
+                            style={{ backgroundColor: `${course.color}20`, color: course.color }}
+                          >
+                            {course.code}
+                          </span>
+                          <span className="text-[10px] font-medium text-stone-600 dark:text-stone-300 flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-stone-400" />
+                            {time}
+                          </span>
+                        </div>
+                        <div className="text-xs font-semibold text-[#37352f] dark:text-[#f3f3f2]">
+                          {course.name}
+                        </div>
+                        <div className="text-[11px] text-[#787774] dark:text-[#9b9a97] flex items-center justify-between pt-0.5">
+                          <span>Prof: {course.professor || 'Não informado'}</span>
+                          {room && (
+                            <span className="truncate flex items-center gap-1">
+                              <MapPin className="w-3 h-3 text-stone-400" />
+                              {room}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 2. Provas do Dia */}
                 {selectedDateExams.length > 0 && (
                   <div className="space-y-2">
-                    <span className="text-[11px] font-semibold text-red-600 dark:text-red-400 uppercase tracking-wider">
-                      Provas & Avaliações ({selectedDateExams.length})
+                    <span className="text-[11px] font-semibold text-red-600 dark:text-red-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      <span>Provas & Avaliações ({selectedDateExams.length})</span>
                     </span>
                     {selectedDateExams.map(({ course, exam, date }) => (
                       <div
@@ -774,8 +876,8 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                           >
                             {course.code}
                           </span>
-                          <span className="text-[10px] font-medium text-red-600 dark:text-red-400">
-                            Avaliação
+                          <span className="text-[10px] font-medium text-red-600 dark:text-red-400 font-semibold">
+                            Prova
                           </span>
                         </div>
                         <div className="text-xs font-semibold text-[#37352f] dark:text-[#f3f3f2]">
@@ -799,13 +901,13 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                   </div>
                 )}
 
-                {/* List of Tasks for the selected date */}
-                <div className="space-y-2">
-                  <span className="text-[11px] font-semibold text-[#787774] dark:text-[#9b9a97] uppercase tracking-wider">
-                    Entregas & Tarefas ({selectedDateTasks.length})
-                  </span>
-
-                  {selectedDateTasks.length > 0 ? (
+                {/* 3. Tarefas & Entregas */}
+                {selectedDateTasks.length > 0 && (
+                  <div className="space-y-2">
+                    <span className="text-[11px] font-semibold text-[#787774] dark:text-[#9b9a97] uppercase tracking-wider flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>Entregas & Tarefas ({selectedDateTasks.length})</span>
+                    </span>
                     <div className="space-y-2">
                       {selectedDateTasks.map((t) => {
                         const course = courses.find((c) => c.id === t.courseId);
@@ -869,12 +971,62 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                         );
                       })}
                     </div>
-                  ) : (
-                    <div className="py-6 text-center text-xs text-[#9b9a97]">
-                      Nenhuma tarefa agendada para esta data.
+                  </div>
+                )}
+
+                {/* 4. Eventos do Google Calendar */}
+                {selectedDateGoogleEvents.length > 0 && (
+                  <div className="space-y-2">
+                    <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <CalendarIcon className="w-3.5 h-3.5" />
+                      <span>Google Calendar ({selectedDateGoogleEvents.length})</span>
+                    </span>
+                    {selectedDateGoogleEvents.map((ev) => {
+                      const timeStr = getEventTimeStr(ev);
+                      return (
+                        <div
+                          key={ev.id}
+                          className="p-2.5 rounded-lg border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/40 dark:bg-emerald-950/20 space-y-1"
+                        >
+                          <div className="flex items-center justify-between text-[10px] text-emerald-700 dark:text-emerald-300 font-medium">
+                            <span>Google Calendar</span>
+                            {timeStr && <span>{timeStr}</span>}
+                          </div>
+                          <div className="text-xs font-semibold text-[#37352f] dark:text-[#f3f3f2]">
+                            {ev.summary}
+                          </div>
+                          {ev.hangoutLink && (
+                            <a
+                              href={ev.hangoutLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 hover:underline pt-0.5"
+                            >
+                              <Video className="w-3 h-3" />
+                              <span>Entrar no Google Meet</span>
+                            </a>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Estado vazio para o dia */}
+                {selectedDateClasses.length === 0 &&
+                  selectedDateExams.length === 0 &&
+                  selectedDateTasks.length === 0 &&
+                  selectedDateGoogleEvents.length === 0 && (
+                    <div className="py-8 text-center text-xs text-[#9b9a97] space-y-1.5 bg-[#f7f6f3]/50 dark:bg-[#1a1a1a]/50 rounded-xl p-4 border border-dashed border-[#e9e9e8] dark:border-[#333]">
+                      <CalendarDays className="w-6 h-6 mx-auto opacity-40 text-stone-400" />
+                      <p className="font-medium text-[#787774] dark:text-[#9b9a97]">
+                        Nenhuma atividade programada para este dia.
+                      </p>
+                      <p className="text-[11px] text-[#9b9a97]">
+                        Você pode adiantar suas matérias ou adicionar uma tarefa abaixo.
+                      </p>
                     </div>
-                  )}
-                </div>
+                )}
               </div>
 
               {/* Quick Add for Selected Day */}

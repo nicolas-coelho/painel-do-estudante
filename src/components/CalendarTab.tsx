@@ -8,6 +8,7 @@ import {
   removeCalendarToken,
   GoogleCalendarEvent,
 } from '../googleCalendar';
+import { getClassesForDayOfWeek } from '../calendarUtils';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -236,6 +237,11 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
   // Map events by date (YYYY-MM-DD)
   const getEventsForDay = (day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const dateObj = new Date(year, month, day);
+    const dayOfWeek = dateObj.getDay();
+
+    // Aulas da semana (com base no horário das disciplinas)
+    const classes = getClassesForDayOfWeek(courses, dayOfWeek);
 
     // Google API events com proteção contra undefined e fuso horário correto
     const gEvts = googleEvents.filter((ev) => getEventDateStr(ev) === dateStr);
@@ -246,7 +252,7 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
     // Tarefas
     const t = upcomingTasks.filter((tk) => tk.dueDate === dateStr);
 
-    return { gEvts, exams, tasks: t, dateStr };
+    return { classes, gEvts, exams, tasks: t, dateStr };
   };
 
   return (
@@ -523,7 +529,7 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
                   {/* Days in Month */}
                   {Array.from({ length: daysInMonth }).map((_, i) => {
                     const dayNum = i + 1;
-                    const { gEvts, exams, tasks: dayTasks, dateStr } = getEventsForDay(dayNum);
+                    const { classes, gEvts, exams, tasks: dayTasks, dateStr } = getEventsForDay(dayNum);
                     const isToday =
                       new Date().toISOString().split('T')[0] === dateStr;
 
@@ -555,6 +561,20 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
 
                         {/* Events list inside cell */}
                         <div className="space-y-1 overflow-y-auto max-h-[70px] text-[10px]">
+                          {/* Aulas da semana */}
+                          {classes.map((cls, idx) => (
+                            <div
+                              key={`cls-${cls.course.id}-${idx}`}
+                              className="px-1.5 py-0.5 rounded font-medium text-white truncate shadow-xs flex items-center gap-1"
+                              style={{ backgroundColor: cls.course.color }}
+                              title={`Aula: ${cls.course.name} (${cls.course.code}) - ${cls.time} - ${cls.room}`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <span>🎓</span>
+                              <span className="truncate">{cls.course.code}</span>
+                            </div>
+                          ))}
+
                           {/* Provas */}
                           {exams.map((ex) => (
                             <div

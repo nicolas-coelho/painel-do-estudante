@@ -15,8 +15,8 @@ export const initialCourses: Course[] = [
     targetAverage: 7.0,
     grades: [
       { id: 'g1', name: 'Prova 1 (P1)', grade: 8.5, maxGrade: 10, weight: 1, date: '2026-04-10' },
-      { id: 'g2', name: 'Prova 2 (P2)', grade: 9.0, maxGrade: 10, weight: 1.5, date: '2026-06-15' },
-      { id: 'g3', name: 'Projeto Prático Java', grade: 9.5, maxGrade: 10, weight: 1.5, date: '2026-06-25' },
+      { id: 'g2', name: 'Prova 2 (P2) - Padrões de Projeto', grade: 9.0, maxGrade: 10, weight: 1.5, date: '2026-11-24' },
+      { id: 'g3', name: 'Projeto Prático Java', grade: 9.5, maxGrade: 10, weight: 1.5, date: '2026-11-28' },
     ],
     syllabus: [
       { id: 's1', title: '1. Introdução à POO: Classes, Objetos e Encapsulamento', completed: true },
@@ -40,7 +40,7 @@ export const initialCourses: Course[] = [
     targetAverage: 7.0,
     grades: [
       { id: 'g4', name: 'P1 - Requisitos & Scrum', grade: 8.0, maxGrade: 10, weight: 1, date: '2026-04-18' },
-      { id: 'g5', name: 'Entrega MVP Sprint 1', grade: 10.0, maxGrade: 10, weight: 1, date: '2026-05-10' },
+      { id: 'g5', name: 'Apresentação Final do Projeto', grade: 10.0, maxGrade: 10, weight: 2, date: '2026-11-25' },
     ],
     syllabus: [
       { id: 's6', title: '1. Ciclos de Vida de Software e Metodologias Ágeis (Scrum/Kanban)', completed: true },
@@ -63,6 +63,7 @@ export const initialCourses: Course[] = [
     targetAverage: 5.0,
     grades: [
       { id: 'g6', name: 'Prova 1 - Limites e Derivadas', grade: 7.5, maxGrade: 10, weight: 1, date: '2026-04-05' },
+      { id: 'g7', name: 'Prova 2 - Integrais Definidas', grade: 8.0, maxGrade: 10, weight: 1.5, date: '2026-11-19' },
     ],
     syllabus: [
       { id: 's10', title: '1. Funções e Limites', completed: true },
