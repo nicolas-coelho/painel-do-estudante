@@ -131,36 +131,82 @@ export const initialTasks: Task[] = [
 export const initialTopics: StudyTopic[] = [
   {
     id: 'topic-1',
-    name: 'Polimorfismo vs Sobrecarga de Métodos',
+    name: 'Polimorfismo, Classes Abstratas e Interfaces',
     courseId: 'course-1',
     question: 'Qual a diferença entre Override (sobreposição) e Overload (sobrecarga)?',
     answer: 'Override: redefinição de método na subclasse mantendo mesma assinatura (@Override em tempo de execução). Overload: mesmo nome na mesma classe com parâmetros diferentes (resolvido em tempo de compilação).',
-    stage: 1, // 3 dias
+    stage: 1, // Fase 2 (2 semanas)
     adaptive: true,
-    lastReviewDate: '2026-11-02',
+    lastReviewDate: '2026-10-30',
     nextReviewDate: today,
+    attempts: [
+      {
+        id: 'att-1',
+        date: '2026-10-30',
+        listTitle: 'Lista 1 - Fixação de Herança e Polimorfismo',
+        totalExercises: 10,
+        correctExercises: 9,
+        scorePercentage: 90.0,
+        passed: true,
+        notes: 'Boa compreensão de polimorfismo dinâmico. Dúvida leve em interfaces com métodos default.',
+      },
+    ],
   },
   {
     id: 'topic-2',
-    name: 'Princípios SOLID: Single Responsibility',
+    name: 'Princípios SOLID: SRP e Open/Closed',
     courseId: 'course-2',
     question: 'O que preconiza o princípio da Responsabilidade Única (SRP)?',
     answer: 'Uma classe deve ter um, e apenas um, motivo para mudar, significando que ela deve ser responsável por apenas uma parte da funcionalidade do software.',
-    stage: 0, // 1 dia
+    stage: 0, // Fase 1 (1 semana)
     adaptive: true,
-    lastReviewDate: '2026-11-04',
+    lastReviewDate: '2026-11-02',
     nextReviewDate: today,
+    attempts: [
+      {
+        id: 'att-2',
+        date: '2026-11-02',
+        listTitle: 'Lista de Exercícios Práticos SOLID',
+        totalExercises: 8,
+        correctExercises: 5,
+        scorePercentage: 62.5,
+        passed: false,
+        notes: 'Abaixo da meta de 80%. Preciso revisar violações do Princípio Aberto/Fechado (OCP).',
+      },
+    ],
   },
   {
     id: 'topic-3',
-    name: 'Teorema Fundamental do Cálculo',
+    name: 'Derivadas, Regra da Cadeia e Aplicações',
     courseId: 'course-3',
-    question: 'Como o Teorema Fundamental do Cálculo conecta diferenciação e integração?',
-    answer: 'Estabelece que a diferenciação e a integração são operações inversas: se f for contínua em [a,b], então a integral definida de f pode ser calculada através de sua primitiva F(b) - F(a).',
-    stage: 2, // 7 dias
+    question: 'Como aplicar a Regra da Cadeia na derivação de funções compostas?',
+    answer: 'Se y = f(u) e u = g(x) são ambas deriváveis, então dy/dx = (dy/du) * (du/dx). Deriva-se a função externa mantendo a interna, e multiplica-se pela derivada da interna.',
+    stage: 2, // Fase 3 (4 semanas)
     adaptive: true,
-    lastReviewDate: '2026-10-30',
+    lastReviewDate: '2026-10-25',
     nextReviewDate: inThreeDays,
+    attempts: [
+      {
+        id: 'att-3a',
+        date: '2026-10-18',
+        listTitle: 'Lista Stewart - Regra da Cadeia',
+        totalExercises: 12,
+        correctExercises: 10,
+        scorePercentage: 83.3,
+        passed: true,
+        notes: 'Atingiu a meta. Erros apenas de conta de sinal.',
+      },
+      {
+        id: 'att-3b',
+        date: '2026-10-25',
+        listTitle: 'Lista 2 - Aplicações de Taxas Relacionadas',
+        totalExercises: 10,
+        correctExercises: 9,
+        scorePercentage: 90.0,
+        passed: true,
+        notes: 'Excelente desempenho na resolução de problemas geométricos de taxas.',
+      },
+    ],
   },
 ];
 

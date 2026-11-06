@@ -45,16 +45,29 @@ export interface Task {
 
 export type ReviewResult = 'Estudo' | 'Acerto' | 'Erro';
 
+export interface ExerciseAttempt {
+  id: string;
+  date: string; // YYYY-MM-DD
+  listTitle: string; // Ex: "Lista 1 - Fixação", "Simulado P1"
+  totalExercises: number; // Ex: 10
+  correctExercises: number; // Ex: 8
+  scorePercentage: number; // Ex: 80.0
+  passed: boolean; // scorePercentage >= target
+  notes?: string;
+}
+
 export interface StudyTopic {
   id: string;
-  name: string;
+  name: string; // Nome do Assunto
   courseId: string;
-  question: string;
-  answer: string;
-  stage: number; // 0: 1d, 1: 3d, 2: 7d, 3: 14d, 4: 30d, 5: concluído
-  adaptive: boolean;
+  question?: string; // Flashcard opcional para revisão rápida
+  answer?: string;
+  stage: number; // 0: Fase 1 (1 sem), 1: Fase 2 (2 sem), 2: Fase 3 (4 sem), 3: Dominado
+  adaptive?: boolean;
   lastReviewDate?: string;
   nextReviewDate: string;
+  attempts?: ExerciseAttempt[]; // Histórico de listas resolvidas
+  targetScore?: number; // Meta específica (padrão global ex: 80%)
 }
 
 export interface StudySession {
