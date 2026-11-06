@@ -101,6 +101,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const { courses, tasks, topics } = await fetchDashboardData();
 
+    // Permite obter a chave do Resend via:
+    // 1. Variável de ambiente Vercel (RESEND_API_KEY)
+    // 2. Query string ou Header
+    // 3. Body da requisição (do modal do site)
+    const apiKey =
+      process.env.RESEND_API_KEY ||
+      (req.headers['x-resend-api-key'] as string) ||
+      (req.query?.apiKey as string) ||
+      (req.body && req.body.resendApiKey);
+
     // 1. Filtrar tarefas atrasadas ou para hoje
     const dueTodayOrOverdue = tasks.filter(
       (t) => t.status !== 'done' && t.dueDate && t.dueDate <= todayStr
@@ -222,14 +232,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     `;
 
     // Se a chave do Resend estiver configurada, faz o envio real
-    if (RESEND_API_KEY) {
-      const resend = new Resend(RESEND_API_KEY);
+    if (apiKey) {
+      const resend = new Resend(apiKey);
       const emailResult = await resend.emails.send({
         from: 'Painel do Estudante <onboarding@resend.dev>',
         to: TARGET_EMAIL,
         subject: `📚 [Painel do Estudante] Resumo de Hoje: ${totalPendencias} pendência(s)`,
         html: emailHtml,
       });
+
+      if (emailResult.error) {
+        return res.status(400).json({
+          success: false,
+          error: `Erro do Resend: ${emailResult.error.message}`,
+        });
+      }
 
       return res.status(200).json({
         success: true,

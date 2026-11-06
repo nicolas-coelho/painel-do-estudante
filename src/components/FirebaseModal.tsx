@@ -29,6 +29,9 @@ export const FirebaseModal: React.FC<FirebaseModalProps> = ({
   const [statusMessage, setStatusMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSendingDigest, setIsSendingDigest] = useState(false);
+  const [resendApiKey, setResendApiKey] = useState<string>(() => {
+    return localStorage.getItem('painel_resend_api_key') || '';
+  });
 
   const existingConfig = getStoredFirebaseConfig();
   const [apiKey, setApiKey] = useState(existingConfig?.apiKey || '');
@@ -51,7 +54,17 @@ export const FirebaseModal: React.FC<FirebaseModalProps> = ({
     setIsSendingDigest(true);
     setStatusMessage(null);
     try {
-      const res = await fetch('/api/daily-digest');
+      if (resendApiKey.trim()) {
+        localStorage.setItem('painel_resend_api_key', resendApiKey.trim());
+      }
+      const res = await fetch('/api/daily-digest', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-resend-api-key': resendApiKey.trim(),
+        },
+        body: JSON.stringify({ resendApiKey: resendApiKey.trim() }),
+      });
       const data = await res.json();
       if (data.success) {
         setStatusMessage({
@@ -259,15 +272,28 @@ export const FirebaseModal: React.FC<FirebaseModalProps> = ({
             Uma automação na Vercel verifica suas tarefas atrasadas, provas próximas e revisões do dia e envia um relatório consolidado para <b>nicolasplcoelho@gmail.com</b>.
           </p>
 
+          <div className="space-y-1 pt-1">
+            <label className="block text-[11px] font-medium text-[#787774] dark:text-[#9b9a97]">
+              Chave API do Resend (opcional se configurada na Vercel):
+            </label>
+            <input
+              type="password"
+              placeholder="re_123456789..."
+              value={resendApiKey}
+              onChange={(e) => setResendApiKey(e.target.value)}
+              className="w-full px-2.5 py-1.5 text-xs font-mono rounded-lg border border-[#e9e9e8] dark:border-[#333] bg-white dark:bg-[#1e1e1e] focus:outline-none focus:border-blue-500"
+            />
+          </div>
+
           <div className="pt-1 flex items-center justify-between gap-2">
-            <span className="text-[10px] text-[#9b9a97]">Agendado: <code>0 11 * * *</code> (UTC)</span>
+            <span className="text-[10px] text-[#9b9a97]">Agendado: <code>0 11 * * *</code> (08h BRT)</span>
             <button
               onClick={handleTriggerDailyDigest}
               disabled={isSendingDigest}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium shadow-sm transition-all disabled:opacity-50"
             >
               <Send className={`w-3.5 h-3.5 ${isSendingDigest ? 'animate-pulse' : ''}`} />
-              <span>{isSendingDigest ? 'Processando...' : 'Testar Envio Agora'}</span>
+              <span>{isSendingDigest ? 'Enviando...' : 'Testar Envio de E-mail'}</span>
             </button>
           </div>
         </div>
