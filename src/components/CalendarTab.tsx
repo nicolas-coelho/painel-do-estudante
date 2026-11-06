@@ -1,15 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { Course, Task } from '../types';
 import {
+  connectGoogleCalendarApi,
+  fetchGoogleCalendarEvents,
+  createGoogleCalendarEventDirect,
+  getSavedCalendarToken,
+  removeCalendarToken,
+  GoogleCalendarEvent,
+} from '../googleCalendar';
+import {
   Calendar as CalendarIcon,
-  ExternalLink,
+  ChevronLeft,
+  ChevronRight,
   Plus,
-  Settings,
+  RefreshCw,
   Clock,
-  BookOpen,
+  Video,
+  MapPin,
+  ExternalLink,
   CheckCircle2,
-  CalendarDays,
+  AlertCircle,
   Sparkles,
+  CalendarDays,
+  X,
+  Trash2,
 } from 'lucide-react';
 
 interface CalendarTabProps {
@@ -20,29 +34,137 @@ interface CalendarTabProps {
   onUpdateCalendarId: (id: string) => void;
 }
 
-export const CalendarTab: React.FC<CalendarTabProps> = ({
-  courses,
-  tasks,
-  darkMode,
-  calendarId,
-  onUpdateCalendarId,
-}) => {
-  const [isConfigOpen, setIsConfigOpen] = useState<boolean>(false);
-  const [tempId, setTempId] = useState<string>(calendarId || 'nicolasplcoelho@gmail.com');
-  const [calendarView, setCalendarView] = useState<'MONTH' | 'WEEK' | 'AGENDA'>('MONTH');
+export const CalendarTab: React.FC<CalendarTabProps> = ({ courses, tasks }) => {
+  const [token, setToken] = useState<string | null>(() => getSavedCalendarToken());
+  const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  const activeId = calendarId || 'nicolasplcoelho@gmail.com';
+  // Calendar date navigation
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [calendarView, setCalendarView] = useState<'month' | 'agenda'>('month');
 
-  // Clean and encode calendar ID for embed URL
-  const cleanCalendarId = activeId.trim();
-  const encodedId = encodeURIComponent(cleanCalendarId);
+  // Modal new event state
+  const [isNewEventModalOpen, setIsNewEventModalOpen] = useState(false);
+  const [eventSummary, setEventSummary] = useState('');
+  const [eventDate, setEventDate] = useState(new Date().toISOString().split('T')[0]);
+  const [eventStartTime, setEventStartTime] = useState('10:00');
+  const [eventEndTime, setEventEndTime] = useState('11:00');
+  const [eventDescription, setEventDescription] = useState('');
+  const [eventLocation, setEventLocation] = useState('');
+  const [isCreatingEvent, setIsCreatingEvent] = useState(false);
 
-  // Google Calendar embed URL
-  const embedUrl = cleanCalendarId
-    ? `https://calendar.google.com/calendar/embed?src=${encodedId}&ctz=America%2FSao_Paulo&mode=${calendarView}&showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=1&showCalendars=0&showTz=0`
-    : '';
+  // Load events if token is present
+  const loadEvents = async (authToken: string) => {
+    setIsLoading(true);
+    setErrorMsg(null);
+    try {
+      const events = await fetchGoogleCalendarEvents(authToken);
+      setGoogleEvents(events);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Erro ao carregar eventos da API');
+      if (err.message?.includes('expirada')) {
+        setToken(null);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-  // Get upcoming exams from courses
+  useEffect(() => {
+    if (token) {
+      loadEvents(token);
+    }
+  }, [token]);
+
+  const handleConnectApi = async () => {
+    setIsLoading(true);
+    setErrorMsg(null);
+    try {
+      const { token: newToken } = await connectGoogleCalendarApi();
+      setToken(newToken);
+      setSuccessMsg('Google Calendar conectado via API oficial com sucesso!');
+      await loadEvents(newToken);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Não foi possível autorizar o Google Calendar');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDisconnect = () => {
+    removeCalendarToken();
+    setToken(null);
+    setGoogleEvents([]);
+    setSuccessMsg('Desconectado do Google Calendar');
+  };
+
+  const handleCreateEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token || !eventSummary.trim()) return;
+
+    setIsCreatingEvent(true);
+    setErrorMsg(null);
+    try {
+      await createGoogleCalendarEventDirect(token, {
+        summary: eventSummary.trim(),
+        startDate: eventDate,
+        startTime: eventStartTime,
+        endTime: eventEndTime,
+        description: eventDescription,
+        location: eventLocation,
+      });
+
+      setSuccessMsg('Evento adicionado diretamente no seu Google Calendar!');
+      setIsNewEventModalOpen(false);
+      setEventSummary('');
+      setEventDescription('');
+      setEventLocation('');
+      await loadEvents(token);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Erro ao criar evento');
+    } finally {
+      setIsCreatingEvent(false);
+    }
+  };
+
+  // Enviar uma prova do painel diretamente para a API do Google Calendar
+  const handleAddExamToGoogle = async (course: Course, exam: any) => {
+    if (!token) {
+      handleConnectApi();
+      return;
+    }
+    try {
+      setIsLoading(true);
+      await createGoogleCalendarEventDirect(token, {
+        summary: `[${course.code}] ${exam.name}`,
+        startDate: exam.date,
+        description: `Prova de ${course.name} (${course.code}). Local: ${course.roomOrLink || 'A definir'}`,
+        location: course.roomOrLink || undefined,
+      });
+      setSuccessMsg(`Prova "${exam.name}" adicionada à sua agenda do Google!`);
+      await loadEvents(token);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Erro ao adicionar prova no Google Calendar');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Calendar calculations (Month Grid)
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+
+  const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 is Sunday
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const monthName = currentDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+
+  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
+  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+  const today = () => setCurrentDate(new Date());
+
+  // Provas das matérias
   const upcomingExams = courses
     .flatMap((c) =>
       (c.grades || [])
@@ -55,173 +177,333 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
     )
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  // Get upcoming tasks
+  // Tarefas com prazo
   const upcomingTasks = tasks
     .filter((t) => t.status !== 'done' && t.dueDate)
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 
-  const handleSaveConfig = (e: React.FormEvent) => {
-    e.preventDefault();
-    onUpdateCalendarId(tempId.trim());
-    setIsConfigOpen(false);
-  };
+  // Map events by date (YYYY-MM-DD)
+  const getEventsForDay = (day: number) => {
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
-  // Helper to open Google Calendar quick add event
-  const createGoogleCalendarEventUrl = (title: string, date: string, details?: string) => {
-    const formattedDate = date.replace(/-/g, '');
-    const dates = `${formattedDate}/${formattedDate}`;
-    const params = new URLSearchParams({
-      action: 'TEMPLATE',
-      text: title,
-      dates: dates,
-      details: details || 'Adicionado via Painel do Estudante',
+    // Google API events
+    const gEvts = googleEvents.filter((ev) => {
+      const d = ev.start.dateTime ? ev.start.dateTime.split('T')[0] : ev.start.date;
+      return d === dateStr;
     });
-    return `https://calendar.google.com/calendar/render?${params.toString()}`;
+
+    // Provas
+    const exams = upcomingExams.filter((ex) => ex.date === dateStr);
+
+    // Tarefas
+    const t = upcomingTasks.filter((tk) => tk.dueDate === dateStr);
+
+    return { gEvts, exams, tasks: t, dateStr };
   };
 
   return (
     <div className="space-y-6">
-      {/* Top Banner / Controls */}
+      {/* Top Banner / API Status */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white dark:bg-[#202020] p-4 rounded-xl border border-[#e9e9e8] dark:border-[#2f2f2f] shadow-sm">
         <div className="flex items-center gap-3">
           <div className="p-2.5 bg-blue-100 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 rounded-lg">
             <CalendarIcon className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="font-semibold text-base text-[#37352f] dark:text-[#f3f3f2] flex items-center gap-2">
-              Google Calendar Integrado
-              {cleanCalendarId && (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 font-medium">
-                  Conectado
+            <div className="flex items-center gap-2">
+              <h2 className="font-semibold text-base text-[#37352f] dark:text-[#f3f3f2]">
+                Google Calendar (API Direta)
+              </h2>
+              {token ? (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  API Conectada
+                </span>
+              ) : (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 font-medium">
+                  Não autenticado
                 </span>
               )}
-            </h2>
+            </div>
             <p className="text-xs text-[#787774] dark:text-[#9b9a97]">
-              Visualize e gerencie suas aulas, provas e compromissos diretamente no calendário do Google
+              {token
+                ? `${googleEvents.length} eventos carregados da sua agenda oficial sem restrição de iframe`
+                : 'Conecte sua conta Google via API para ler e criar eventos reais no Google Calendar'}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <button
-            onClick={() => {
-              setTempId(calendarId);
-              setIsConfigOpen(true);
-            }}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-[#e9e9e8] dark:border-[#333] hover:bg-stone-50 dark:hover:bg-stone-800 transition-all text-[#37352f] dark:text-white"
-          >
-            <Settings className="w-3.5 h-3.5" />
-            <span>Configurar Agenda</span>
-          </button>
-
-          <a
-            href="https://calendar.google.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg shadow-sm transition-all"
-          >
-            <span>Abrir no Google</span>
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
+        <div className="flex items-center gap-2 flex-wrap">
+          {token ? (
+            <>
+              <button
+                onClick={() => loadEvents(token)}
+                disabled={isLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-[#e9e9e8] dark:border-[#333] hover:bg-stone-50 dark:hover:bg-stone-800 rounded-lg text-xs font-medium text-[#37352f] dark:text-white transition-all"
+                title="Sincronizar eventos agora"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+                <span>Atualizar</span>
+              </button>
+              <button
+                onClick={() => setIsNewEventModalOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg shadow-sm transition-all"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Novo Evento</span>
+              </button>
+              <button
+                onClick={handleDisconnect}
+                className="px-2.5 py-1.5 text-xs text-stone-400 hover:text-red-500 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 transition-all"
+                title="Desconectar da API do Google"
+              >
+                Desconectar
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={handleConnectApi}
+              disabled={isLoading}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-xl shadow-sm transition-all"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>{isLoading ? 'Conectando...' : 'Conectar Conta Google (API Direta)'}</span>
+            </button>
+          )}
         </div>
       </div>
 
+      {/* Messages */}
+      {successMsg && (
+        <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 rounded-lg border border-emerald-200 dark:border-emerald-900/40 text-xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4" />
+            <span>{successMsg}</span>
+          </div>
+          <button onClick={() => setSuccessMsg(null)}>
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {errorMsg && (
+        <div className="p-3 bg-red-50 dark:bg-red-950/30 text-red-800 dark:text-red-300 rounded-lg border border-red-200 dark:border-red-900/40 text-xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4" />
+            <span>{errorMsg}</span>
+          </div>
+          <button onClick={() => setErrorMsg(null)}>
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Main Grid: Native Calendar (3 cols) + Academic Sidebar (1 col) */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Main Calendar View (3 cols) */}
-        <div className="lg:col-span-3 space-y-3">
-          {cleanCalendarId ? (
-            <div className="bg-white dark:bg-[#202020] rounded-2xl border border-[#e9e9e8] dark:border-[#2f2f2f] shadow-sm overflow-hidden flex flex-col">
-              {/* Calendar sub-header */}
-              <div className="px-4 py-3 border-b border-[#e9e9e8] dark:border-[#2f2f2f] flex items-center justify-between bg-[#fcfbf9] dark:bg-[#252525]">
-                <div className="flex items-center gap-1 bg-[#efeeea] dark:bg-[#1e1e1e] p-1 rounded-lg text-xs">
+        <div className="lg:col-span-3 space-y-4">
+          <div className="bg-white dark:bg-[#202020] rounded-2xl border border-[#e9e9e8] dark:border-[#2f2f2f] shadow-sm overflow-hidden flex flex-col">
+            {/* Calendar Controls & Month Switcher */}
+            <div className="p-4 border-b border-[#e9e9e8] dark:border-[#2f2f2f] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-[#fcfbf9] dark:bg-[#252525]">
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-base md:text-lg capitalize text-[#37352f] dark:text-[#f3f3f2]">
+                  {monthName}
+                </h3>
+                <div className="flex items-center gap-1 border border-[#e9e9e8] dark:border-[#333] rounded-lg p-0.5 bg-white dark:bg-[#1e1e1e]">
+                  <button onClick={prevMonth} className="p-1 hover:bg-stone-100 dark:hover:bg-stone-800 rounded">
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button onClick={today} className="px-2 py-0.5 text-xs font-medium hover:bg-stone-100 dark:hover:bg-stone-800 rounded">
+                    Hoje
+                  </button>
+                  <button onClick={nextMonth} className="p-1 hover:bg-stone-100 dark:hover:bg-stone-800 rounded">
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs">
+                <div className="flex items-center gap-1 bg-[#efeeea] dark:bg-[#1e1e1e] p-1 rounded-lg">
                   <button
-                    onClick={() => setCalendarView('MONTH')}
-                    className={`px-2.5 py-1 rounded-md font-medium transition-all ${
-                      calendarView === 'MONTH'
+                    onClick={() => setCalendarView('month')}
+                    className={`px-3 py-1 rounded-md font-medium transition-all ${
+                      calendarView === 'month'
                         ? 'bg-white dark:bg-[#2a2a2a] text-[#37352f] dark:text-white shadow-sm'
                         : 'text-[#787774] dark:text-[#9b9a97]'
                     }`}
                   >
-                    Mês
+                    Grade Mensal
                   </button>
                   <button
-                    onClick={() => setCalendarView('WEEK')}
-                    className={`px-2.5 py-1 rounded-md font-medium transition-all ${
-                      calendarView === 'WEEK'
+                    onClick={() => setCalendarView('agenda')}
+                    className={`px-3 py-1 rounded-md font-medium transition-all ${
+                      calendarView === 'agenda'
                         ? 'bg-white dark:bg-[#2a2a2a] text-[#37352f] dark:text-white shadow-sm'
                         : 'text-[#787774] dark:text-[#9b9a97]'
                     }`}
                   >
-                    Semana
-                  </button>
-                  <button
-                    onClick={() => setCalendarView('AGENDA')}
-                    className={`px-2.5 py-1 rounded-md font-medium transition-all ${
-                      calendarView === 'AGENDA'
-                        ? 'bg-white dark:bg-[#2a2a2a] text-[#37352f] dark:text-white shadow-sm'
-                        : 'text-[#787774] dark:text-[#9b9a97]'
-                    }`}
-                  >
-                    Agenda
+                    Lista de Eventos ({googleEvents.length})
                   </button>
                 </div>
 
                 <a
-                  href={`https://calendar.google.com/calendar/u/0/r`}
+                  href="https://calendar.google.com"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                  className="p-1.5 text-stone-400 hover:text-blue-600 transition-colors"
+                  title="Abrir no Google Calendar oficial"
                 >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Novo Evento</span>
+                  <ExternalLink className="w-4 h-4" />
                 </a>
               </div>
-
-              {/* Responsive Iframe Container */}
-              <div className="relative w-full h-[620px] bg-white">
-                <iframe
-                  title="Google Calendar"
-                  src={embedUrl}
-                  className="w-full h-full border-0"
-                  style={{ filter: darkMode ? 'invert(90%) hue-rotate(180deg)' : 'none' }}
-                />
-              </div>
             </div>
-          ) : (
-            /* Setup Prompt if Calendar ID is not set yet */
-            <div className="bg-white dark:bg-[#202020] rounded-2xl border border-dashed border-[#e9e9e8] dark:border-[#333] p-8 text-center space-y-4">
-              <div className="w-16 h-16 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 rounded-2xl flex items-center justify-center mx-auto">
-                <CalendarDays className="w-8 h-8" />
-              </div>
-              <div className="max-w-md mx-auto space-y-2">
-                <h3 className="font-semibold text-lg text-[#37352f] dark:text-[#f3f3f2]">
-                  Conecte seu Google Calendar
-                </h3>
-                <p className="text-xs text-[#787774] dark:text-[#9b9a97]">
-                  Insira o seu e-mail do Gmail ou o ID da sua agenda do Google para embutir o calendário completo aqui com suas aulas e eventos.
-                </p>
-              </div>
 
-              <div className="pt-2 flex justify-center gap-3">
-                <button
-                  onClick={() => setIsConfigOpen(true)}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium shadow-sm transition-all flex items-center gap-2"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  <span>Configurar ID da Agenda</span>
-                </button>
-              </div>
+            {/* MONTH VIEW: Native Responsive Grid */}
+            {calendarView === 'month' && (
+              <div className="p-3">
+                {/* Days of week header */}
+                <div className="grid grid-cols-7 gap-1 text-center font-semibold text-[11px] text-[#9b9a97] uppercase tracking-wider pb-2 border-b border-[#f0f0ee] dark:border-[#2a2a2a]">
+                  <div>Dom</div>
+                  <div>Seg</div>
+                  <div>Ter</div>
+                  <div>Qua</div>
+                  <div>Qui</div>
+                  <div>Sex</div>
+                  <div>Sáb</div>
+                </div>
 
-              <div className="text-[11px] text-[#9b9a97] max-w-sm mx-auto pt-2">
-                Dica: O ID padrão é simplesmente o seu próprio endereço de e-mail (ex: <code>seunome@gmail.com</code>). Certifique-se de que a agenda esteja com permissão de visualização.
+                {/* Days Grid */}
+                <div className="grid grid-cols-7 gap-1 pt-2">
+                  {/* Empty slots before first day of month */}
+                  {Array.from({ length: firstDayOfMonth }).map((_, i) => (
+                    <div key={`empty-${i}`} className="min-h-[85px] p-1.5 rounded-lg bg-stone-50/50 dark:bg-[#1c1c1c]/30" />
+                  ))}
+
+                  {/* Days in Month */}
+                  {Array.from({ length: daysInMonth }).map((_, i) => {
+                    const dayNum = i + 1;
+                    const { gEvts, exams, tasks: dayTasks, dateStr } = getEventsForDay(dayNum);
+                    const isToday =
+                      new Date().toISOString().split('T')[0] === dateStr;
+
+                    return (
+                      <div
+                        key={`day-${dayNum}`}
+                        className={`min-h-[95px] p-1.5 rounded-xl border flex flex-col justify-between transition-all ${
+                          isToday
+                            ? 'border-blue-500 bg-blue-50/20 dark:bg-blue-950/10'
+                            : 'border-[#f0f0ee] dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] hover:border-stone-300 dark:hover:border-stone-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span
+                            className={`w-5 h-5 flex items-center justify-center rounded-full text-xs font-semibold ${
+                              isToday
+                                ? 'bg-blue-600 text-white'
+                                : 'text-[#37352f] dark:text-[#f3f3f2]'
+                            }`}
+                          >
+                            {dayNum}
+                          </span>
+                        </div>
+
+                        {/* Events list inside cell */}
+                        <div className="space-y-1 overflow-y-auto max-h-[70px] text-[10px]">
+                          {/* Provas */}
+                          {exams.map((ex) => (
+                            <div
+                              key={ex.exam.id}
+                              className="px-1.5 py-0.5 rounded font-medium text-white truncate shadow-xs"
+                              style={{ backgroundColor: ex.course.color }}
+                              title={`Prova: ${ex.exam.name} (${ex.course.name})`}
+                            >
+                              📝 {ex.exam.name}
+                            </div>
+                          ))}
+
+                          {/* Tarefas */}
+                          {dayTasks.map((tk) => (
+                            <div
+                              key={tk.id}
+                              className="px-1.5 py-0.5 rounded font-medium bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 truncate"
+                              title={`Tarefa: ${tk.name}`}
+                            >
+                              📌 {tk.name}
+                            </div>
+                          ))}
+
+                          {/* Eventos Google API */}
+                          {gEvts.map((ge) => (
+                            <div
+                              key={ge.id}
+                              className="px-1.5 py-0.5 rounded font-medium bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 truncate"
+                              title={ge.summary}
+                            >
+                              🗓️ {ge.summary}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+
+            {/* AGENDA VIEW: List of events */}
+            {calendarView === 'agenda' && (
+              <div className="divide-y divide-[#f0f0ee] dark:divide-[#2a2a2a] p-4 space-y-3">
+                {googleEvents.length > 0 ? (
+                  googleEvents.map((evt) => {
+                    const startStr = evt.start.dateTime
+                      ? new Date(evt.start.dateTime).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+                      : evt.start.date;
+                    return (
+                      <div key={evt.id} className="pt-3 pb-2 flex items-start justify-between gap-4">
+                        <div className="space-y-1">
+                          <h4 className="font-semibold text-sm text-[#37352f] dark:text-[#f3f3f2]">
+                            {evt.summary}
+                          </h4>
+                          <div className="flex items-center gap-3 text-xs text-[#787774] dark:text-[#9b9a97]">
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3.5 h-3.5" />
+                              {startStr}
+                            </span>
+                            {evt.location && (
+                              <span className="flex items-center gap-1 truncate max-w-xs">
+                                <MapPin className="w-3.5 h-3.5" />
+                                {evt.location}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {evt.hangoutLink && (
+                          <a
+                            href={evt.hangoutLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 shrink-0"
+                          >
+                            <Video className="w-3.5 h-3.5" />
+                            <span>Entrar no Meet</span>
+                          </a>
+                        )}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="py-12 text-center text-xs text-[#9b9a97] space-y-2">
+                    <CalendarDays className="w-8 h-8 mx-auto opacity-40" />
+                    <p>Nenhum evento retornado da API do Google Calendar.</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Sidebar: Upcoming Academic Deadlines (1 col) */}
+        {/* Sidebar: Provas Acadêmicas & Prazos */}
         <div className="space-y-4">
-          {/* Upcoming Exams card */}
           <div className="bg-white dark:bg-[#202020] rounded-xl border border-[#e9e9e8] dark:border-[#2f2f2f] p-4 space-y-3 shadow-sm">
             <h3 className="font-semibold text-xs text-[#787774] dark:text-[#9b9a97] uppercase tracking-wider flex items-center justify-between">
               <span>Provas Agendadas</span>
@@ -232,7 +514,7 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
 
             {upcomingExams.length > 0 ? (
               <div className="space-y-2.5">
-                {upcomingExams.slice(0, 5).map(({ course, exam, date }) => (
+                {upcomingExams.map(({ course, exam, date }) => (
                   <div
                     key={exam.id}
                     className="p-2.5 rounded-lg border border-[#f0f0ee] dark:border-[#2a2a2a] bg-[#faf9f6] dark:bg-[#252525] space-y-1.5"
@@ -251,30 +533,23 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
                       {exam.name}
                     </div>
 
-                    <a
-                      href={createGoogleCalendarEventUrl(
-                        `[${course.code}] ${exam.name}`,
-                        date,
-                        `Prova de ${course.name} (${course.code}). Local: ${course.roomOrLink || 'A definir'}`
-                      )}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-[11px] text-blue-600 dark:text-blue-400 hover:underline pt-1"
+                    <button
+                      onClick={() => handleAddExamToGoogle(course, exam)}
+                      className="inline-flex items-center gap-1 text-[11px] text-blue-600 dark:text-blue-400 hover:underline pt-1 font-medium"
                     >
                       <Plus className="w-3 h-3" />
-                      <span>Adicionar ao Google Calendar</span>
-                    </a>
+                      <span>{token ? 'Adicionar à Agenda Google' : 'Conectar Google p/ Salvar'}</span>
+                    </button>
                   </div>
                 ))}
               </div>
             ) : (
               <div className="py-4 text-center text-xs text-[#9b9a97]">
-                Nenhuma data de prova cadastrada nas disciplinas.
+                Nenhuma prova agendada nas disciplinas.
               </div>
             )}
           </div>
 
-          {/* Upcoming Tasks card */}
           <div className="bg-white dark:bg-[#202020] rounded-xl border border-[#e9e9e8] dark:border-[#2f2f2f] p-4 space-y-3 shadow-sm">
             <h3 className="font-semibold text-xs text-[#787774] dark:text-[#9b9a97] uppercase tracking-wider flex items-center justify-between">
               <span>Prazos de Tarefas</span>
@@ -285,27 +560,24 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
 
             {upcomingTasks.length > 0 ? (
               <div className="space-y-2">
-                {upcomingTasks.slice(0, 5).map((t) => {
-                  const course = courses.find((c) => c.id === t.courseId);
-                  return (
-                    <div
-                      key={t.id}
-                      className="p-2.5 rounded-lg border border-[#f0f0ee] dark:border-[#2a2a2a] bg-[#faf9f6] dark:bg-[#252525] space-y-1"
-                    >
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-[10px] font-medium text-[#9b9a97]">
-                          {course ? course.code : 'Geral'}
-                        </span>
-                        <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
-                          {t.dueDate}
-                        </span>
-                      </div>
-                      <div className="font-medium text-xs text-[#37352f] dark:text-[#f3f3f2] truncate">
-                        {t.name}
-                      </div>
+                {upcomingTasks.slice(0, 5).map((t) => (
+                  <div
+                    key={t.id}
+                    className="p-2.5 rounded-lg border border-[#f0f0ee] dark:border-[#2a2a2a] bg-[#faf9f6] dark:bg-[#252525] space-y-1"
+                  >
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-[10px] font-medium text-[#9b9a97]">
+                        {courses.find((c) => c.id === t.courseId)?.code || 'Geral'}
+                      </span>
+                      <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                        {t.dueDate}
+                      </span>
                     </div>
-                  );
-                })}
+                    <div className="font-medium text-xs text-[#37352f] dark:text-[#f3f3f2] truncate">
+                      {t.name}
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : (
               <div className="py-4 text-center text-xs text-[#9b9a97]">
@@ -316,56 +588,99 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
         </div>
       </div>
 
-      {/* Configuration Modal */}
-      {isConfigOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#202020] rounded-xl border border-[#e9e9e8] dark:border-[#2f2f2f] w-full max-w-md shadow-2xl p-6 space-y-4">
-            <div>
+      {/* Modal: Adicionar Evento na API do Google Calendar */}
+      {isNewEventModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#202020] rounded-2xl border border-[#e9e9e8] dark:border-[#2f2f2f] w-full max-w-md shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
               <h3 className="font-semibold text-base text-[#37352f] dark:text-[#f3f3f2]">
-                Conectar Agenda do Google
+                Novo Evento no Google Calendar
               </h3>
-              <p className="text-xs text-[#787774] dark:text-[#9b9a97] mt-1">
-                Insira o seu e-mail do Google (ex: <code>seuemail@gmail.com</code>) ou o ID de compartilhamento de qualquer agenda do Google Calendar.
-              </p>
+              <button onClick={() => setIsNewEventModalOpen(false)} className="p-1 text-stone-400 hover:text-stone-700">
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            <form onSubmit={handleSaveConfig} className="space-y-4">
+            <form onSubmit={handleCreateEvent} className="space-y-3 text-xs md:text-sm">
               <div>
-                <label className="block text-xs font-medium text-[#787774] dark:text-[#9b9a97] mb-1">
-                  E-mail do Google / ID da Agenda
-                </label>
+                <label className="block text-[#787774] dark:text-[#9b9a97] mb-1 font-medium">Título do Evento *</label>
                 <input
                   type="text"
                   required
-                  placeholder="ex: estudante@gmail.com"
-                  value={tempId}
-                  onChange={(e) => setTempId(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-[#e9e9e8] dark:border-[#333] bg-transparent focus:outline-none focus:border-blue-500 font-mono"
+                  placeholder="Ex: Aula de Revisão / Apresentação de TCC"
+                  value={eventSummary}
+                  onChange={(e) => setEventSummary(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-lg border border-[#e9e9e8] dark:border-[#333] bg-transparent focus:outline-none focus:border-blue-500 font-medium"
                 />
               </div>
 
-              <div className="text-[11px] text-[#787774] dark:text-[#9b9a97] space-y-1 bg-[#f7f6f3] dark:bg-[#252525] p-3 rounded-lg">
-                <p className="font-medium">Como liberar a visualização no Google Calendar:</p>
-                <ol className="list-decimal list-inside space-y-0.5 text-[10px]">
-                  <li>Acesse o Google Calendar no navegador.</li>
-                  <li>Clique nos 3 pontos ao lado da sua agenda → <b>Configurações e compartilhamento</b>.</li>
-                  <li>Em <b>Permissões de acesso</b>, marque <i>"Disponibilizar para o público"</i> (ou acesse com a mesma conta logada no navegador).</li>
-                </ol>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-[#787774] dark:text-[#9b9a97] mb-1 font-medium">Data</label>
+                  <input
+                    type="date"
+                    required
+                    value={eventDate}
+                    onChange={(e) => setEventDate(e.target.value)}
+                    className="w-full px-2 py-1.5 text-xs rounded-lg border border-[#e9e9e8] dark:border-[#333] bg-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[#787774] dark:text-[#9b9a97] mb-1 font-medium">Início</label>
+                  <input
+                    type="time"
+                    value={eventStartTime}
+                    onChange={(e) => setEventStartTime(e.target.value)}
+                    className="w-full px-2 py-1.5 text-xs rounded-lg border border-[#e9e9e8] dark:border-[#333] bg-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[#787774] dark:text-[#9b9a97] mb-1 font-medium">Fim</label>
+                  <input
+                    type="time"
+                    value={eventEndTime}
+                    onChange={(e) => setEventEndTime(e.target.value)}
+                    className="w-full px-2 py-1.5 text-xs rounded-lg border border-[#e9e9e8] dark:border-[#333] bg-transparent"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[#787774] dark:text-[#9b9a97] mb-1 font-medium">Local ou Link</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Auditório ou link do Meet"
+                  value={eventLocation}
+                  onChange={(e) => setEventLocation(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-lg border border-[#e9e9e8] dark:border-[#333] bg-transparent focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[#787774] dark:text-[#9b9a97] mb-1 font-medium">Descrição / Observações</label>
+                <textarea
+                  rows={2}
+                  placeholder="Anotações para a agenda..."
+                  value={eventDescription}
+                  onChange={(e) => setEventDescription(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-lg border border-[#e9e9e8] dark:border-[#333] bg-transparent focus:outline-none focus:border-blue-500 resize-none"
+                />
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setIsConfigOpen(false)}
-                  className="px-3.5 py-2 border border-[#e9e9e8] dark:border-[#333] rounded-lg text-xs font-medium hover:bg-stone-50 dark:hover:bg-stone-800"
+                  onClick={() => setIsNewEventModalOpen(false)}
+                  className="px-3.5 py-2 border border-[#e9e9e8] dark:border-[#333] rounded-lg text-xs"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium shadow-sm"
+                  disabled={isCreatingEvent}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium shadow-sm transition-all disabled:opacity-50"
                 >
-                  Salvar Agenda
+                  {isCreatingEvent ? 'Gravando no Google...' : 'Gravar no Google Calendar'}
                 </button>
               </div>
             </form>
