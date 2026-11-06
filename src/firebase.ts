@@ -17,14 +17,14 @@ import {
 } from 'firebase/auth';
 import { FirebaseConfig } from './types';
 
-// Default config from Vite environment variables (if provided)
-const envConfig: FirebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || '',
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || '',
+// Default project config for Painel do Estudante
+const defaultFirebaseConfig: FirebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyD5uzbhpcINOZpH4w_aRBzitlKW7DErEI0',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'painel-estudante-8b2c.firebaseapp.com',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'painel-estudante-8b2c',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'painel-estudante-8b2c.firebasestorage.app',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '311806318624',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:311806318624:web:c703c752e0c10f8df50445',
 };
 
 const LOCAL_STORAGE_FIREBASE_CONFIG = 'painel_firebase_config';
@@ -40,10 +40,7 @@ export function getStoredFirebaseConfig(): FirebaseConfig | null {
     // fallback
   }
 
-  if (envConfig.apiKey && envConfig.projectId) {
-    return envConfig;
-  }
-  return null;
+  return defaultFirebaseConfig;
 }
 
 export function saveStoredFirebaseConfig(config: FirebaseConfig) {
