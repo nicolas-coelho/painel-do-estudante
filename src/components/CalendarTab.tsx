@@ -60,12 +60,17 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
   const [eventLocation, setEventLocation] = useState('');
   const [isCreatingEvent, setIsCreatingEvent] = useState(false);
 
-  // Load events if token is present
-  const loadEvents = async (authToken: string) => {
+  // Load events if token is present (inicia no 1º dia do mês visualizado para frente)
+  const loadEvents = async (authToken: string, targetDate?: Date) => {
     setIsLoading(true);
     setErrorMsg(null);
     try {
-      const events = await fetchGoogleCalendarEvents(authToken);
+      const d = targetDate || currentDate;
+      // Começa no primeiro dia do mês às 00:00:00 (descarta eventos passados de meses anteriores)
+      const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0).toISOString();
+      const endWindow = new Date(d.getFullYear() + 1, d.getMonth() + 1, 0, 23, 59, 59).toISOString();
+
+      const events = await fetchGoogleCalendarEvents(authToken, startOfMonth, endWindow);
       setGoogleEvents(events);
     } catch (err: any) {
       setErrorMsg(err.message || 'Erro ao carregar eventos da API');
@@ -79,7 +84,7 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
 
   useEffect(() => {
     if (token) {
-      loadEvents(token);
+      loadEvents(token, currentDate);
     }
   }, [token]);
 
@@ -90,7 +95,7 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
       const { token: newToken } = await connectGoogleCalendarApi();
       setToken(newToken);
       setSuccessMsg('Google Calendar conectado via API oficial com sucesso!');
-      await loadEvents(newToken);
+      await loadEvents(newToken, currentDate);
     } catch (err: any) {
       setErrorMsg(err.message || 'Não foi possível autorizar o Google Calendar');
     } finally {
@@ -165,9 +170,21 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const monthName = currentDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
-  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
-  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
-  const today = () => setCurrentDate(new Date());
+  const prevMonth = () => {
+    const newD = new Date(year, month - 1, 1);
+    setCurrentDate(newD);
+    if (token) loadEvents(token, newD);
+  };
+  const nextMonth = () => {
+    const newD = new Date(year, month + 1, 1);
+    setCurrentDate(newD);
+    if (token) loadEvents(token, newD);
+  };
+  const today = () => {
+    const newD = new Date();
+    setCurrentDate(newD);
+    if (token) loadEvents(token, newD);
+  };
 
   // Provas das matérias
   const upcomingExams = courses
@@ -268,7 +285,7 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
           {token ? (
             <>
               <button
-                onClick={() => loadEvents(token)}
+                onClick={() => loadEvents(token, currentDate)}
                 disabled={isLoading}
                 className="flex items-center gap-1.5 px-3 py-1.5 border border-[#e9e9e8] dark:border-[#333] hover:bg-stone-50 dark:hover:bg-stone-800 rounded-lg text-xs font-medium text-[#37352f] dark:text-white transition-all"
                 title="Sincronizar eventos agora"

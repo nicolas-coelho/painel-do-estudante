@@ -54,9 +54,13 @@ export async function fetchGoogleCalendarEvents(
   timeMin?: string,
   timeMax?: string
 ): Promise<GoogleCalendarEvent[]> {
-  // Puxa desde o mês passado até 1 ano à frente para cobrir todo o ano letivo
-  const min = timeMin || new Date(Date.now() - 45 * 86400000).toISOString();
-  const max = timeMax || new Date(Date.now() + 365 * 86400000).toISOString();
+  // Padrão: inicia no 1º dia do mês corrente às 00:00:00 (descarta meses passados antigos)
+  const now = new Date();
+  const firstDayThisMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0).toISOString();
+  const oneYearAhead = new Date(now.getFullYear() + 1, now.getMonth() + 1, 0, 23, 59, 59).toISOString();
+
+  const min = timeMin || firstDayThisMonth;
+  const max = timeMax || oneYearAhead;
 
   let allItems: any[] = [];
   let pageToken: string | null = null;
