@@ -117,31 +117,35 @@ export function onUserChanged(callback: (user: User | null) => void) {
   return onAuthStateChanged(firebaseAuth, callback);
 }
 
-// Salvar dados no Cloud Firestore
+export const DEFAULT_DASHBOARD_ID = 'principal';
+
+// Salvar dados no Cloud Firestore (modo direto ou por usuário)
 export async function saveToFirestore(
-  userId: string,
+  userId: string = DEFAULT_DASHBOARD_ID,
   dashboardData: any
 ): Promise<void> {
   const firestore = getFirebaseDb();
   if (!firestore) return;
 
-  const userDocRef = doc(firestore, 'student_dashboards', userId);
+  const docId = userId || DEFAULT_DASHBOARD_ID;
+  const userDocRef = doc(firestore, 'student_dashboards', docId);
   await setDoc(userDocRef, {
     ...dashboardData,
     updatedAt: new Date().toISOString(),
   }, { merge: true });
 }
 
-// Ouvir alterações em tempo real no Firestore
+// Ouvir alterações em tempo real no Firestore (modo direto ou por usuário)
 export function subscribeToFirestore(
-  userId: string,
+  userId: string = DEFAULT_DASHBOARD_ID,
   onData: (data: any) => void,
   onError?: (err: Error) => void
 ) {
   const firestore = getFirebaseDb();
   if (!firestore) return () => {};
 
-  const userDocRef = doc(firestore, 'student_dashboards', userId);
+  const docId = userId || DEFAULT_DASHBOARD_ID;
+  const userDocRef = doc(firestore, 'student_dashboards', docId);
   return onSnapshot(
     userDocRef,
     (snapshot) => {

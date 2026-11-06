@@ -14,10 +14,11 @@ import { ActiveRecallTab } from './components/ActiveRecallTab';
 import { PomodoroTimerTab } from './components/PomodoroTimerTab';
 import { NotebookTab } from './components/NotebookTab';
 import { CalendarTab } from './components/CalendarTab';
+import { HomeTab } from './components/HomeTab';
 import { FirebaseModal } from './components/FirebaseModal';
 import { onUserChanged, saveToFirestore, subscribeToFirestore } from './firebase';
 import { User } from 'firebase/auth';
-import { BookOpen, CheckSquare, Brain, Clock, FileText, Calendar } from 'lucide-react';
+import { BookOpen, CheckSquare, Brain, Clock, FileText, Calendar, LayoutDashboard } from 'lucide-react';
 
 export const App: React.FC = () => {
   // Theme state
@@ -37,8 +38,8 @@ export const App: React.FC = () => {
 
   // Main navigation tab
   const [activeTab, setActiveTab] = useState<
-    'courses' | 'tasks' | 'active_recall' | 'calendar' | 'timer' | 'notes'
-  >('courses');
+    'home' | 'courses' | 'tasks' | 'active_recall' | 'calendar' | 'timer' | 'notes'
+  >('home');
 
   // Firebase auth & modal state
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
@@ -79,59 +80,64 @@ export const App: React.FC = () => {
     return () => unsub();
   }, []);
 
-  // Real-time Firestore sync listener
+  // Real-time Firestore sync listener (Conexão Direta Automática)
   useEffect(() => {
-    if (!firebaseUser) return;
-
-    const unsub = subscribeToFirestore(firebaseUser.uid, (data) => {
+    const unsub = subscribeToFirestore('principal', (data) => {
       if (!data) return;
       isSyncingFromCloudRef.current = true;
-      if (data.courses) setCourses(data.courses);
-      if (data.tasks) setTasks(data.tasks);
-      if (data.topics) setTopics(data.topics);
-      if (data.sessions) setSessions(data.sessions);
-      if (data.notes) setNotes(data.notes);
+      if (data.courses && Array.isArray(data.courses) && data.courses.length > 0) {
+        setCourses(data.courses);
+      }
+      if (data.tasks && Array.isArray(data.tasks)) setTasks(data.tasks);
+      if (data.topics && Array.isArray(data.topics)) setTopics(data.topics);
+      if (data.sessions && Array.isArray(data.sessions)) setSessions(data.sessions);
+      if (data.notes && Array.isArray(data.notes)) setNotes(data.notes);
       setTimeout(() => {
         isSyncingFromCloudRef.current = false;
       }, 500);
     });
 
     return () => unsub();
-  }, [firebaseUser]);
+  }, []);
 
-  // Sync with LocalStorage & Firestore
+  // Sync with LocalStorage & Firestore (salva automaticamente na nuvem)
   useEffect(() => {
     localStorage.setItem('study_courses', JSON.stringify(courses));
-    if (firebaseUser && !isSyncingFromCloudRef.current) {
-      saveToFirestore(firebaseUser.uid, { courses });
+    if (!isSyncingFromCloudRef.current) {
+      saveToFirestore('principal', { courses });
+      if (firebaseUser) saveToFirestore(firebaseUser.uid, { courses });
     }
   }, [courses, firebaseUser]);
 
   useEffect(() => {
     localStorage.setItem('study_tasks', JSON.stringify(tasks));
-    if (firebaseUser && !isSyncingFromCloudRef.current) {
-      saveToFirestore(firebaseUser.uid, { tasks });
+    if (!isSyncingFromCloudRef.current) {
+      saveToFirestore('principal', { tasks });
+      if (firebaseUser) saveToFirestore(firebaseUser.uid, { tasks });
     }
   }, [tasks, firebaseUser]);
 
   useEffect(() => {
     localStorage.setItem('study_topics', JSON.stringify(topics));
-    if (firebaseUser && !isSyncingFromCloudRef.current) {
-      saveToFirestore(firebaseUser.uid, { topics });
+    if (!isSyncingFromCloudRef.current) {
+      saveToFirestore('principal', { topics });
+      if (firebaseUser) saveToFirestore(firebaseUser.uid, { topics });
     }
   }, [topics, firebaseUser]);
 
   useEffect(() => {
     localStorage.setItem('study_sessions', JSON.stringify(sessions));
-    if (firebaseUser && !isSyncingFromCloudRef.current) {
-      saveToFirestore(firebaseUser.uid, { sessions });
+    if (!isSyncingFromCloudRef.current) {
+      saveToFirestore('principal', { sessions });
+      if (firebaseUser) saveToFirestore(firebaseUser.uid, { sessions });
     }
   }, [sessions, firebaseUser]);
 
   useEffect(() => {
     localStorage.setItem('study_notes', JSON.stringify(notes));
-    if (firebaseUser && !isSyncingFromCloudRef.current) {
-      saveToFirestore(firebaseUser.uid, { notes });
+    if (!isSyncingFromCloudRef.current) {
+      saveToFirestore('principal', { notes });
+      if (firebaseUser) saveToFirestore(firebaseUser.uid, { notes });
     }
   }, [notes, firebaseUser]);
 
@@ -139,6 +145,7 @@ export const App: React.FC = () => {
   const todayStr = new Date().toISOString().split('T')[0];
   const activeCoursesCount = courses.filter((c) => c.inProgress).length;
   const pendingTasksCount = tasks.filter((t) => t.status !== 'done').length;
+  const todayDeliveriesCount = tasks.filter((t) => t.dueDate === todayStr && t.status !== 'done').length;
   const dueReviewsCount = topics.filter((t) => t.nextReviewDate <= todayStr).length;
   const studiedMinutesToday = sessions
     .filter((s) => s.date === todayStr)
@@ -177,6 +184,13 @@ export const App: React.FC = () => {
 
   // Nav Tabs configuration
   const tabs = [
+    {
+      id: 'home',
+      label: 'Página Inicial',
+      icon: LayoutDashboard,
+      count: todayDeliveriesCount > 0 ? todayDeliveriesCount : undefined,
+      highlight: todayDeliveriesCount > 0,
+    },
     {
       id: 'courses',
       label: 'Disciplinas',
@@ -268,6 +282,20 @@ export const App: React.FC = () => {
         </div>
 
         {/* Tab Views */}
+        {activeTab === 'home' && (
+          <HomeTab
+            courses={courses}
+            tasks={tasks}
+            darkMode={darkMode}
+            onAddTask={(newT) => setTasks([...tasks, newT])}
+            onUpdateTask={(updT) =>
+              setTasks(tasks.map((t) => (t.id === updT.id ? updT : t)))
+            }
+            onDeleteTask={(id) => setTasks(tasks.filter((t) => t.id !== id))}
+            onNavigateTab={(tab) => setActiveTab(tab as any)}
+          />
+        )}
+
         {activeTab === 'courses' && (
           <CoursesTab
             courses={courses}

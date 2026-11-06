@@ -34,15 +34,11 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="absolute right-4 top-4 flex items-center gap-2 flex-wrap justify-end">
           <button
             onClick={onOpenFirebaseModal}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md backdrop-blur transition-all border ${
-              firebaseUser
-                ? 'bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border-emerald-500/40'
-                : 'bg-black/40 hover:bg-black/60 text-white border-white/10'
-            }`}
-            title="Sincronizar com Google Firebase"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md backdrop-blur transition-all border bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border-emerald-500/40"
+            title="Sincronização com Google Firebase em Tempo Real"
           >
-            <Cloud className="w-3.5 h-3.5" />
-            <span>{firebaseUser ? (firebaseUser.displayName?.split(' ')[0] || 'Firebase Conectado') : 'Conectar Firebase'}</span>
+            <Cloud className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+            <span>{firebaseUser ? (firebaseUser.displayName?.split(' ')[0] || 'Nuvem Conectada') : 'Nuvem Conectada'}</span>
           </button>
           <label className="cursor-pointer flex items-center gap-1.5 px-3 py-1.5 bg-black/40 hover:bg-black/60 text-white text-xs font-medium rounded-md backdrop-blur transition-all border border-white/10">
             <Upload className="w-3.5 h-3.5" />
