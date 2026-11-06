@@ -424,6 +424,7 @@ export const App: React.FC = () => {
             courses={courses}
             tasks={tasks}
             darkMode={darkMode}
+            calendarId={calendarId}
             onAddTask={handleAddTask}
             onUpdateTask={handleUpdateTask}
             onDeleteTask={handleDeleteTask}

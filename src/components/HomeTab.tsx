@@ -29,6 +29,7 @@ interface HomeTabProps {
   courses: Course[];
   tasks: Task[];
   darkMode: boolean;
+  calendarId?: string;
   onAddTask: (task: Task) => void;
   onUpdateTask: (task: Task) => void;
   onDeleteTask: (id: string) => void;
@@ -48,6 +49,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
   courses,
   tasks,
   darkMode,
+  calendarId: propCalendarId,
   onAddTask,
   onUpdateTask,
   onDeleteTask,
@@ -74,18 +76,15 @@ export const HomeTab: React.FC<HomeTabProps> = ({
 
   // Google Calendar config & events
   const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
-  const [calendarId] = useState<string>(() => {
-    return localStorage.getItem(LOCAL_STORAGE_CALENDAR_ID) || '';
-  });
+  const calendarId = propCalendarId || localStorage.getItem(LOCAL_STORAGE_CALENDAR_ID) || 'nicolasplcoelho@gmail.com';
 
   useEffect(() => {
     const savedToken = getSavedCalendarToken();
-    if (savedToken) {
-      fetchGoogleCalendarEvents(savedToken)
-        .then((evts) => setGoogleEvents(evts))
-        .catch((err) => console.log('Google Calendar sync in Home:', err));
-    }
-  }, []);
+    fetchGoogleCalendarEvents(savedToken, undefined, undefined, calendarId)
+      .then((evts) => setGoogleEvents(evts))
+      .catch((err) => console.log('Google Calendar sync in Home:', err));
+  }, [calendarId]);
+
   const cleanCalendarId = calendarId.trim();
   const encodedId = encodeURIComponent(cleanCalendarId);
   const googleEmbedUrl = cleanCalendarId

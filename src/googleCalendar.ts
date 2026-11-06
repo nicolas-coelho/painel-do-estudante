@@ -2,6 +2,7 @@ import { getFirebaseAuth } from './firebase';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 
 const STORAGE_CALENDAR_TOKEN = 'google_calendar_access_token';
+const STORAGE_CALENDAR_ICAL = 'google_calendar_ical_url';
 
 export interface GoogleCalendarEvent {
   id: string;
@@ -24,6 +25,44 @@ export function saveCalendarToken(token: string) {
 
 export function removeCalendarToken() {
   localStorage.removeItem(STORAGE_CALENDAR_TOKEN);
+}
+
+export function getSavedCalendarIcal(): string | null {
+  return localStorage.getItem(STORAGE_CALENDAR_ICAL);
+}
+
+export function saveCalendarIcal(url: string) {
+  localStorage.setItem(STORAGE_CALENDAR_ICAL, url.trim());
+}
+
+export function removeCalendarIcal() {
+  localStorage.removeItem(STORAGE_CALENDAR_ICAL);
+}
+
+// Busca eventos de forma permanente (sem pop-up, sem expirar) via Vercel /api/calendar
+export async function fetchPermanentCalendarEvents(
+  email?: string,
+  icalUrl?: string
+): Promise<GoogleCalendarEvent[]> {
+  try {
+    const params = new URLSearchParams();
+    if (email) params.set('email', email);
+    const ical = icalUrl || getSavedCalendarIcal();
+    if (ical) params.set('ical', ical);
+
+    const res = await fetch(`/api/calendar?${params.toString()}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.events && Array.isArray(data.events)) {
+        return data.events.filter(
+          (item: any) => item && item.start && (item.start.dateTime || item.start.date)
+        );
+      }
+    }
+  } catch (err) {
+    console.warn('Erro ao consultar /api/calendar permanente:', err);
+  }
+  return [];
 }
 
 // Autentica solicitando permissão para acessar o Google Calendar via API
@@ -70,12 +109,18 @@ export async function connectGoogleCalendarApi(): Promise<{ token: string; email
   }
 }
 
-// Busca eventos reais diretamente da API do Google Calendar (REST com paginação completa)
+// Busca eventos reais diretamente da API do Google Calendar (com fallback automático permanente)
 export async function fetchGoogleCalendarEvents(
-  token: string,
+  token?: string | null,
   timeMin?: string,
-  timeMax?: string
+  timeMax?: string,
+  fallbackEmail?: string
 ): Promise<GoogleCalendarEvent[]> {
+  // Se não houver token OAuth fornecido, busca diretamente pelo feed permanente
+  if (!token) {
+    return await fetchPermanentCalendarEvents(fallbackEmail);
+  }
+
   // Padrão: inicia no 1º dia do mês corrente às 00:00:00 (descarta meses passados antigos)
   const now = new Date();
   const firstDayThisMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0).toISOString();
@@ -88,54 +133,68 @@ export async function fetchGoogleCalendarEvents(
   let pageToken: string | null = null;
   let pageCount = 0;
 
-  do {
-    pageCount++;
-    let url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(
-      min
-    )}&timeMax=${encodeURIComponent(max)}&singleEvents=true&orderBy=startTime&maxResults=2500`;
+  try {
+    do {
+      pageCount++;
+      let url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(
+        min
+      )}&timeMax=${encodeURIComponent(max)}&singleEvents=true&orderBy=startTime&maxResults=2500`;
 
-    if (pageToken) {
-      url += `&pageToken=${encodeURIComponent(pageToken)}`;
-    }
-
-    const res = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!res.ok) {
-      if (res.status === 401) {
-        removeCalendarToken();
-        throw new Error('SESSION_EXPIRED: Sua sessão do Google Calendar expirou (o token dura 1 hora). Conecte novamente.');
-      }
-      const errData = await res.json().catch(() => ({}));
-      const msg = errData?.error?.message || `Erro da API do Google (${res.status}): ${res.statusText}`;
-
-      // Detecção inteligente de API desativada no Google Cloud Console
-      if (
-        res.status === 403 &&
-        (msg.includes('calendar-json.googleapis.com') ||
-          msg.includes('has not been used') ||
-          msg.includes('disabled') ||
-          msg.includes('PERMISSION_DENIED') ||
-          msg.includes('Access Not Configured'))
-      ) {
-        throw new Error(
-          'API_NOT_ENABLED: A API do Google Calendar ainda não foi ativada no projeto Google Cloud do Firebase. Você precisa ativá-la no Google Cloud Console com 1 clique para sincronizar os eventos.'
-        );
+      if (pageToken) {
+        url += `&pageToken=${encodeURIComponent(pageToken)}`;
       }
 
-      throw new Error(msg);
-    }
+      const res = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
 
-    const data = await res.json();
-    if (data.items && Array.isArray(data.items)) {
-      allItems = allItems.concat(data.items);
-    }
-    pageToken = data.nextPageToken || null;
-  } while (pageToken && pageCount < 10);
+      if (!res.ok) {
+        if (res.status === 401) {
+          removeCalendarToken();
+          // Fallback silencioso para o feed permanente quando o token expirar
+          const fallback = await fetchPermanentCalendarEvents(fallbackEmail);
+          if (fallback.length > 0) return fallback;
+          throw new Error('SESSION_EXPIRED: Sua sessão do Google Calendar expirou (o token dura 1 hora). Conecte novamente.');
+        }
+        const errData = await res.json().catch(() => ({}));
+        const msg = errData?.error?.message || `Erro da API do Google (${res.status}): ${res.statusText}`;
+
+        // Detecção inteligente de API desativada no Google Cloud Console
+        if (
+          res.status === 403 &&
+          (msg.includes('calendar-json.googleapis.com') ||
+            msg.includes('has not been used') ||
+            msg.includes('disabled') ||
+            msg.includes('PERMISSION_DENIED') ||
+            msg.includes('Access Not Configured'))
+        ) {
+          // Fallback para o feed permanente
+          const fallback = await fetchPermanentCalendarEvents(fallbackEmail);
+          if (fallback.length > 0) return fallback;
+
+          throw new Error(
+            'API_NOT_ENABLED: A API do Google Calendar ainda não foi ativada no projeto Google Cloud do Firebase. Você precisa ativá-la no Google Cloud Console com 1 clique para sincronizar os eventos.'
+          );
+        }
+
+        throw new Error(msg);
+      }
+
+      const data = await res.json();
+      if (data.items && Array.isArray(data.items)) {
+        allItems = allItems.concat(data.items);
+      }
+      pageToken = data.nextPageToken || null;
+    } while (pageToken && pageCount < 10);
+  } catch (err: any) {
+    // Se der erro na chamada OAuth, tenta resgatar eventos do feed permanente antes de falhar
+    const fallback = await fetchPermanentCalendarEvents(fallbackEmail);
+    if (fallback.length > 0) return fallback;
+    throw err;
+  }
 
   // Filtra itens válidos e remove cancelados/deletados
   const validItems: GoogleCalendarEvent[] = allItems.filter(

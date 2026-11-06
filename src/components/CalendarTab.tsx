@@ -6,9 +6,13 @@ import {
   createGoogleCalendarEventDirect,
   getSavedCalendarToken,
   removeCalendarToken,
+  getSavedCalendarIcal,
+  saveCalendarIcal,
+  removeCalendarIcal,
+  fetchPermanentCalendarEvents,
   GoogleCalendarEvent,
 } from '../googleCalendar';
-import { getClassesForDayOfWeek } from '../calendarUtils';
+import { getClassesForDayOfWeek, getEventDateStr, getEventTimeStr } from '../calendarUtils';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -25,6 +29,8 @@ import {
   CalendarDays,
   X,
   Trash2,
+  Link2,
+  Settings,
 } from 'lucide-react';
 
 interface CalendarTabProps {
@@ -47,6 +53,11 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  // Modal para conexão permanente via iCal
+  const [isPermanentModalOpen, setIsPermanentModalOpen] = useState(false);
+  const [icalInput, setIcalInput] = useState(() => getSavedCalendarIcal() || '');
+  const [savedIcal, setSavedIcal] = useState(() => getSavedCalendarIcal());
+
   // Calendar date navigation
   const [currentDate, setCurrentDate] = useState(new Date());
   const [calendarView, setCalendarView] = useState<'month' | 'agenda' | 'official'>('month');
@@ -61,21 +72,26 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
   const [eventLocation, setEventLocation] = useState('');
   const [isCreatingEvent, setIsCreatingEvent] = useState(false);
 
-  // Load events if token is present (inicia no 1º dia do mês visualizado para frente)
-  const loadEvents = async (authToken: string, targetDate?: Date) => {
+  // Carrega eventos: primeiro tenta OAuth (se houver token válido), senão carrega feed permanente!
+  const loadEvents = async (authToken?: string | null, targetDate?: Date) => {
     setIsLoading(true);
     setErrorMsg(null);
     try {
       const d = targetDate || currentDate;
-      // Começa no primeiro dia do mês às 00:00:00 (descarta eventos passados de meses anteriores)
       const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0).toISOString();
       const endWindow = new Date(d.getFullYear() + 1, d.getMonth() + 1, 0, 23, 59, 59).toISOString();
 
-      const events = await fetchGoogleCalendarEvents(authToken, startOfMonth, endWindow);
+      const events = await fetchGoogleCalendarEvents(authToken, startOfMonth, endWindow, calendarId);
       setGoogleEvents(events);
     } catch (err: any) {
-      setErrorMsg(err.message || 'Erro ao carregar eventos da API');
-      if (err.message?.includes('expirada')) {
+      // Se falhar a chamada OAuth, tenta resgatar eventos do feed permanente
+      const fallbackEvents = await fetchPermanentCalendarEvents(calendarId);
+      if (fallbackEvents.length > 0) {
+        setGoogleEvents(fallbackEvents);
+      } else {
+        setErrorMsg(err.message || 'Erro ao carregar eventos da API');
+      }
+      if (err.message?.includes('expirada') || err.message?.includes('SESSION_EXPIRED')) {
         setToken(null);
       }
     } finally {
@@ -84,10 +100,9 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
   };
 
   useEffect(() => {
-    if (token) {
-      loadEvents(token, currentDate);
-    }
-  }, [token]);
+    // Sempre carrega na inicialização automaticamente sem pedir popup!
+    loadEvents(token, currentDate);
+  }, [token, calendarId, savedIcal]);
 
   const handleConnectApi = async () => {
     setIsLoading(true);
@@ -255,6 +270,26 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
     return { classes, gEvts, exams, tasks: t, dateStr };
   };
 
+  const handleSavePermanentIcal = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (icalInput.trim()) {
+      saveCalendarIcal(icalInput.trim());
+      setSavedIcal(icalInput.trim());
+      setSuccessMsg('Conexão permanente configurada com sucesso! Seus eventos atualizarão continuamente sem precisar de login repetido.');
+      setIsPermanentModalOpen(false);
+      loadEvents(token, currentDate);
+    }
+  };
+
+  const handleRemovePermanentIcal = () => {
+    removeCalendarIcal();
+    setSavedIcal(null);
+    setIcalInput('');
+    setSuccessMsg('Conexão permanente removida.');
+    setIsPermanentModalOpen(false);
+    loadEvents(token, currentDate);
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Banner / API Status */}
@@ -266,28 +301,46 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="font-semibold text-base text-[#37352f] dark:text-[#f3f3f2]">
-                Google Calendar (API Direta)
+                Google Calendar
               </h2>
               {token ? (
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 font-semibold flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  API Conectada
+                  API OAuth Ativa
+                </span>
+              ) : savedIcal || googleEvents.length > 0 ? (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 font-semibold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                  Sincronização Permanente Ativa
                 </span>
               ) : (
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 font-medium">
-                  Não autenticado
+                  Modo Agenda Integrada
                 </span>
               )}
             </div>
             <p className="text-xs text-[#787774] dark:text-[#9b9a97]">
               {token
-                ? `${googleEvents.length} eventos carregados da sua agenda oficial sem restrição de iframe`
-                : 'Conecte sua conta Google via API para ler e criar eventos reais no Google Calendar'}
+                ? `${googleEvents.length} eventos carregados da sua agenda oficial via API`
+                : savedIcal
+                ? `${googleEvents.length} eventos sincronizados permanentemente sem precisar de login`
+                : googleEvents.length > 0
+                ? `${googleEvents.length} eventos carregados automaticamente da sua agenda`
+                : 'Conecte sua conta ou configure o feed permanente para sincronizar seus compromissos sem expirar'}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setIsPermanentModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-[#e9e9e8] dark:border-[#333] hover:bg-stone-50 dark:hover:bg-stone-800 rounded-lg text-xs font-medium text-[#37352f] dark:text-white transition-all shadow-xs"
+            title="Configurar conexão permanente sem precisar autenticar toda hora"
+          >
+            <Link2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+            <span>{savedIcal ? 'Configuração Permanente ✓' : 'Conexão Permanente (iCal)'}</span>
+          </button>
+
           {token ? (
             <>
               <button
@@ -321,7 +374,7 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-xl shadow-sm transition-all"
             >
               <Sparkles className="w-4 h-4" />
-              <span>{isLoading ? 'Conectando...' : 'Conectar Conta Google (API Direta)'}</span>
+              <span>{isLoading ? 'Conectando...' : 'Conectar via Google (OAuth)'}</span>
             </button>
           )}
         </div>
@@ -912,6 +965,91 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
                 >
                   {isCreatingEvent ? 'Gravando no Google...' : 'Gravar no Google Calendar'}
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Conexão Permanente via iCal (Sem exigir login) */}
+      {isPermanentModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#202020] rounded-2xl border border-[#e9e9e8] dark:border-[#2f2f2f] w-full max-w-lg shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-blue-100 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 rounded-lg">
+                  <Link2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-base text-[#37352f] dark:text-[#f3f3f2]">
+                    Conexão Permanente (Nunca Expira)
+                  </h3>
+                  <p className="text-xs text-[#787774] dark:text-[#9b9a97]">
+                    Sincronize sua agenda 24/7 sem precisar fazer login ou autorizar pop-ups repetidamente.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsPermanentModalOpen(false)}
+                className="p-1 text-stone-400 hover:text-stone-600 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3.5 bg-blue-50/70 dark:bg-blue-950/30 rounded-xl border border-blue-200/60 dark:border-blue-900/40 text-xs text-blue-900 dark:text-blue-200 space-y-2">
+              <div className="font-semibold flex items-center gap-1.5">
+                <span>📍 Como obter o Endereço Secreto no Google Calendar:</span>
+              </div>
+              <ol className="list-decimal list-inside space-y-1 text-[11px] text-[#4b5563] dark:text-[#9ca3af]">
+                <li>Abra o <b>Google Calendar</b> no navegador do computador.</li>
+                <li>Na barra lateral esquerda, passe o mouse sobre sua agenda e clique nos <b>3 pontinhos (⋮)</b> &gt; <b>Configurações e compartilhamento</b>.</li>
+                <li>Role a página até a seção <b>"Integrar agenda"</b>.</li>
+                <li>Copie o link do campo <b>"Endereço secreto no formato iCal"</b> (termina com <code className="font-mono">.ics</code>).</li>
+              </ol>
+            </div>
+
+            <form onSubmit={handleSavePermanentIcal} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-[#787774] dark:text-[#9b9a97] mb-1 font-medium">
+                  Endereço secreto no formato iCal (.ics) do Google Calendar
+                </label>
+                <input
+                  type="url"
+                  required
+                  placeholder="https://calendar.google.com/calendar/ical/.../basic.ics"
+                  value={icalInput}
+                  onChange={(e) => setIcalInput(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-lg border border-[#e9e9e8] dark:border-[#333] bg-transparent focus:outline-none focus:border-blue-500 font-mono"
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-2">
+                {savedIcal ? (
+                  <button
+                    type="button"
+                    onClick={handleRemovePermanentIcal}
+                    className="px-3 py-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg text-xs font-medium transition-all"
+                  >
+                    Desvincular Feed
+                  </button>
+                ) : <div />}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsPermanentModalOpen(false)}
+                    className="px-3.5 py-2 border border-[#e9e9e8] dark:border-[#333] rounded-lg text-xs font-medium hover:bg-stone-50 dark:hover:bg-stone-800"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium shadow-sm transition-all"
+                  >
+                    Salvar Conexão Permanente
+                  </button>
+                </div>
               </div>
             </form>
           </div>
