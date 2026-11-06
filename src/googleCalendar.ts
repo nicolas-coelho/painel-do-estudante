@@ -48,39 +48,55 @@ export async function connectGoogleCalendarApi(): Promise<{ token: string; email
   return { token, email: result.user.email || undefined };
 }
 
-// Busca eventos reais diretamente da API do Google Calendar (REST)
+// Busca eventos reais diretamente da API do Google Calendar (REST com paginação completa)
 export async function fetchGoogleCalendarEvents(
   token: string,
   timeMin?: string,
   timeMax?: string
 ): Promise<GoogleCalendarEvent[]> {
-  // Janela ampla: 6 meses atrás até 1 ano à frente para cobrir todo o ano letivo
-  const min = timeMin || new Date(Date.now() - 180 * 86400000).toISOString();
+  // Puxa desde o mês passado até 1 ano à frente para cobrir todo o ano letivo
+  const min = timeMin || new Date(Date.now() - 45 * 86400000).toISOString();
   const max = timeMax || new Date(Date.now() + 365 * 86400000).toISOString();
 
-  const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(
-    min
-  )}&timeMax=${encodeURIComponent(max)}&singleEvents=true&orderBy=startTime&maxResults=250`;
+  let allItems: any[] = [];
+  let pageToken: string | null = null;
+  let pageCount = 0;
 
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
+  do {
+    pageCount++;
+    let url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(
+      min
+    )}&timeMax=${encodeURIComponent(max)}&singleEvents=true&orderBy=startTime&maxResults=2500`;
 
-  if (!res.ok) {
-    if (res.status === 401) {
-      removeCalendarToken();
-      throw new Error('Sessão expirada. Conecte novamente o Google Calendar.');
+    if (pageToken) {
+      url += `&pageToken=${encodeURIComponent(pageToken)}`;
     }
-    const errData = await res.json().catch(() => ({}));
-    throw new Error(errData?.error?.message || `Erro da API do Google: ${res.statusText}`);
-  }
 
-  const data = await res.json();
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!res.ok) {
+      if (res.status === 401) {
+        removeCalendarToken();
+        throw new Error('Sessão expirada. Conecte novamente o Google Calendar.');
+      }
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData?.error?.message || `Erro da API do Google: ${res.statusText}`);
+    }
+
+    const data = await res.json();
+    if (data.items && Array.isArray(data.items)) {
+      allItems = allItems.concat(data.items);
+    }
+    pageToken = data.nextPageToken || null;
+  } while (pageToken && pageCount < 10);
+
   // Filtra itens válidos e remove cancelados/deletados
-  const validItems: GoogleCalendarEvent[] = (data.items || []).filter(
+  const validItems: GoogleCalendarEvent[] = allItems.filter(
     (item: any) =>
       item &&
       item.status !== 'cancelled' &&
