@@ -1,5 +1,6 @@
 import React from 'react';
-import { Sun, Moon, Download, Upload, BookOpen, Clock, CheckCircle2 } from 'lucide-react';
+import { Sun, Moon, Download, Upload, BookOpen, Clock, CheckCircle2, Cloud } from 'lucide-react';
+import { User } from 'firebase/auth';
 
 interface HeaderProps {
   darkMode: boolean;
@@ -12,6 +13,8 @@ interface HeaderProps {
   };
   onExportData: () => void;
   onImportData: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onOpenFirebaseModal: () => void;
+  firebaseUser: User | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -20,13 +23,27 @@ export const Header: React.FC<HeaderProps> = ({
   stats,
   onExportData,
   onImportData,
+  onOpenFirebaseModal,
+  firebaseUser,
 }) => {
   return (
     <header className="relative w-full border-b border-[#e9e9e8] dark:border-[#2f2f2f] bg-white dark:bg-[#1f1f1f]">
       {/* Notion Cover Banner */}
       <div className="h-44 md:h-52 w-full bg-gradient-to-r from-slate-800 via-indigo-950 to-stone-900 relative overflow-hidden">
         <div className="absolute inset-0 opacity-20 bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px]"></div>
-        <div className="absolute right-4 top-4 flex items-center gap-2">
+        <div className="absolute right-4 top-4 flex items-center gap-2 flex-wrap justify-end">
+          <button
+            onClick={onOpenFirebaseModal}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md backdrop-blur transition-all border ${
+              firebaseUser
+                ? 'bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border-emerald-500/40'
+                : 'bg-black/40 hover:bg-black/60 text-white border-white/10'
+            }`}
+            title="Sincronizar com Google Firebase"
+          >
+            <Cloud className="w-3.5 h-3.5" />
+            <span>{firebaseUser ? (firebaseUser.displayName?.split(' ')[0] || 'Firebase Conectado') : 'Conectar Firebase'}</span>
+          </button>
           <label className="cursor-pointer flex items-center gap-1.5 px-3 py-1.5 bg-black/40 hover:bg-black/60 text-white text-xs font-medium rounded-md backdrop-blur transition-all border border-white/10">
             <Upload className="w-3.5 h-3.5" />
             <span>Restaurar Backup</span>

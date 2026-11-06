@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Course, Task, StudyTopic, StudySession, NotebookNote } from './types';
 import {
   initialCourses,
@@ -13,7 +13,11 @@ import { TasksKanbanTab } from './components/TasksKanbanTab';
 import { ActiveRecallTab } from './components/ActiveRecallTab';
 import { PomodoroTimerTab } from './components/PomodoroTimerTab';
 import { NotebookTab } from './components/NotebookTab';
-import { BookOpen, CheckSquare, Brain, Clock, FileText } from 'lucide-react';
+import { CalendarTab } from './components/CalendarTab';
+import { FirebaseModal } from './components/FirebaseModal';
+import { onUserChanged, saveToFirestore, subscribeToFirestore } from './firebase';
+import { User } from 'firebase/auth';
+import { BookOpen, CheckSquare, Brain, Clock, FileText, Calendar } from 'lucide-react';
 
 export const App: React.FC = () => {
   // Theme state
@@ -33,8 +37,13 @@ export const App: React.FC = () => {
 
   // Main navigation tab
   const [activeTab, setActiveTab] = useState<
-    'courses' | 'tasks' | 'active_recall' | 'timer' | 'notes'
+    'courses' | 'tasks' | 'active_recall' | 'calendar' | 'timer' | 'notes'
   >('courses');
+
+  // Firebase auth & modal state
+  const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
+  const [isFirebaseModalOpen, setIsFirebaseModalOpen] = useState(false);
+  const isSyncingFromCloudRef = useRef(false);
 
   // Persistence helpers
   const loadState = <T,>(key: string, fallback: T): T => {
@@ -62,12 +71,69 @@ export const App: React.FC = () => {
     loadState('study_notes', initialNotes)
   );
 
-  // Sync with LocalStorage
-  useEffect(() => localStorage.setItem('study_courses', JSON.stringify(courses)), [courses]);
-  useEffect(() => localStorage.setItem('study_tasks', JSON.stringify(tasks)), [tasks]);
-  useEffect(() => localStorage.setItem('study_topics', JSON.stringify(topics)), [topics]);
-  useEffect(() => localStorage.setItem('study_sessions', JSON.stringify(sessions)), [sessions]);
-  useEffect(() => localStorage.setItem('study_notes', JSON.stringify(notes)), [notes]);
+  // Listen to Firebase Auth state
+  useEffect(() => {
+    const unsub = onUserChanged((user) => {
+      setFirebaseUser(user);
+    });
+    return () => unsub();
+  }, []);
+
+  // Real-time Firestore sync listener
+  useEffect(() => {
+    if (!firebaseUser) return;
+
+    const unsub = subscribeToFirestore(firebaseUser.uid, (data) => {
+      if (!data) return;
+      isSyncingFromCloudRef.current = true;
+      if (data.courses) setCourses(data.courses);
+      if (data.tasks) setTasks(data.tasks);
+      if (data.topics) setTopics(data.topics);
+      if (data.sessions) setSessions(data.sessions);
+      if (data.notes) setNotes(data.notes);
+      setTimeout(() => {
+        isSyncingFromCloudRef.current = false;
+      }, 500);
+    });
+
+    return () => unsub();
+  }, [firebaseUser]);
+
+  // Sync with LocalStorage & Firestore
+  useEffect(() => {
+    localStorage.setItem('study_courses', JSON.stringify(courses));
+    if (firebaseUser && !isSyncingFromCloudRef.current) {
+      saveToFirestore(firebaseUser.uid, { courses });
+    }
+  }, [courses, firebaseUser]);
+
+  useEffect(() => {
+    localStorage.setItem('study_tasks', JSON.stringify(tasks));
+    if (firebaseUser && !isSyncingFromCloudRef.current) {
+      saveToFirestore(firebaseUser.uid, { tasks });
+    }
+  }, [tasks, firebaseUser]);
+
+  useEffect(() => {
+    localStorage.setItem('study_topics', JSON.stringify(topics));
+    if (firebaseUser && !isSyncingFromCloudRef.current) {
+      saveToFirestore(firebaseUser.uid, { topics });
+    }
+  }, [topics, firebaseUser]);
+
+  useEffect(() => {
+    localStorage.setItem('study_sessions', JSON.stringify(sessions));
+    if (firebaseUser && !isSyncingFromCloudRef.current) {
+      saveToFirestore(firebaseUser.uid, { sessions });
+    }
+  }, [sessions, firebaseUser]);
+
+  useEffect(() => {
+    localStorage.setItem('study_notes', JSON.stringify(notes));
+    if (firebaseUser && !isSyncingFromCloudRef.current) {
+      saveToFirestore(firebaseUser.uid, { notes });
+    }
+  }, [notes, firebaseUser]);
 
   // Quick stats
   const todayStr = new Date().toISOString().split('T')[0];
@@ -124,6 +190,11 @@ export const App: React.FC = () => {
       count: pendingTasksCount,
     },
     {
+      id: 'calendar',
+      label: 'Google Calendar',
+      icon: Calendar,
+    },
+    {
       id: 'active_recall',
       label: 'Recuperação Ativa & Revisões',
       icon: Brain,
@@ -157,6 +228,8 @@ export const App: React.FC = () => {
         }}
         onExportData={handleExportData}
         onImportData={handleImportData}
+        onOpenFirebaseModal={() => setIsFirebaseModalOpen(true)}
+        firebaseUser={firebaseUser}
       />
 
       {/* Main Content Area */}
@@ -198,6 +271,7 @@ export const App: React.FC = () => {
         {activeTab === 'courses' && (
           <CoursesTab
             courses={courses}
+            tasks={tasks}
             onAddCourse={(newC) => setCourses([...courses, newC])}
             onUpdateCourse={(updC) =>
               setCourses(courses.map((c) => (c.id === updC.id ? updC : c)))
@@ -216,6 +290,10 @@ export const App: React.FC = () => {
             }
             onDeleteTask={(id) => setTasks(tasks.filter((t) => t.id !== id))}
           />
+        )}
+
+        {activeTab === 'calendar' && (
+          <CalendarTab courses={courses} tasks={tasks} darkMode={darkMode} />
         )}
 
         {activeTab === 'active_recall' && (
@@ -247,6 +325,13 @@ export const App: React.FC = () => {
           />
         )}
       </main>
+
+      {/* Firebase Sync & Settings Modal */}
+      <FirebaseModal
+        isOpen={isFirebaseModalOpen}
+        onClose={() => setIsFirebaseModalOpen(false)}
+        dashboardData={{ courses, tasks, topics, sessions, notes }}
+      />
     </div>
   );
 };

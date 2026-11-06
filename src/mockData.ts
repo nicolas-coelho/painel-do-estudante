@@ -12,6 +12,19 @@ export const initialCourses: Course[] = [
     year: '2026',
     inProgress: true,
     color: '#3b82f6',
+    targetAverage: 7.0,
+    grades: [
+      { id: 'g1', name: 'Prova 1 (P1)', grade: 8.5, maxGrade: 10, weight: 1, date: '2026-04-10' },
+      { id: 'g2', name: 'Prova 2 (P2)', grade: 9.0, maxGrade: 10, weight: 1.5, date: '2026-06-15' },
+      { id: 'g3', name: 'Projeto Prático Java', grade: 9.5, maxGrade: 10, weight: 1.5, date: '2026-06-25' },
+    ],
+    syllabus: [
+      { id: 's1', title: '1. Introdução à POO: Classes, Objetos e Encapsulamento', completed: true },
+      { id: 's2', title: '2. Herança, Polimorfismo e Interfaces', completed: true },
+      { id: 's3', title: '3. Tratamento de Exceções e Coleções (Generics)', completed: false },
+      { id: 's4', title: '4. Padrões de Projeto (GoF) e Arquitetura MVC', completed: false },
+      { id: 's5', title: '5. Programação Funcional e Streams em Java', completed: false },
+    ],
   },
   {
     id: 'course-2',
@@ -24,6 +37,17 @@ export const initialCourses: Course[] = [
     year: '2026',
     inProgress: true,
     color: '#10b981',
+    targetAverage: 7.0,
+    grades: [
+      { id: 'g4', name: 'P1 - Requisitos & Scrum', grade: 8.0, maxGrade: 10, weight: 1, date: '2026-04-18' },
+      { id: 'g5', name: 'Entrega MVP Sprint 1', grade: 10.0, maxGrade: 10, weight: 1, date: '2026-05-10' },
+    ],
+    syllabus: [
+      { id: 's6', title: '1. Ciclos de Vida de Software e Metodologias Ágeis (Scrum/Kanban)', completed: true },
+      { id: 's7', title: '2. Engenharia de Requisitos e User Stories', completed: true },
+      { id: 's8', title: '3. Modelagem de Arquitetura e Diagramas C4/UML', completed: false },
+      { id: 's9', title: '4. Testes Automatizados (TDD, BDD, CI/CD)', completed: false },
+    ],
   },
   {
     id: 'course-3',
@@ -36,6 +60,16 @@ export const initialCourses: Course[] = [
     year: '2026',
     inProgress: true,
     color: '#f59e0b',
+    targetAverage: 5.0,
+    grades: [
+      { id: 'g6', name: 'Prova 1 - Limites e Derivadas', grade: 7.5, maxGrade: 10, weight: 1, date: '2026-04-05' },
+    ],
+    syllabus: [
+      { id: 's10', title: '1. Funções e Limites', completed: true },
+      { id: 's11', title: '2. Derivadas e Regra da Cadeia', completed: true },
+      { id: 's12', title: '3. Aplicações de Derivadas (Máximos e Mínimos)', completed: false },
+      { id: 's13', title: '4. Integrais Definidas e Indefinidas', completed: false },
+    ],
   },
   {
     id: 'course-4',

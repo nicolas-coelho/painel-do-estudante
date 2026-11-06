@@ -1,3 +1,19 @@
+export interface GradeItem {
+  id: string;
+  name: string; // Ex: "P1", "P2", "Trabalho Final"
+  grade: number; // Ex: 8.5
+  maxGrade?: number; // Ex: 10
+  weight?: number; // Ex: 1, 2 (peso)
+  date?: string;
+}
+
+export interface SyllabusItem {
+  id: string;
+  title: string;
+  completed: boolean;
+  notes?: string;
+}
+
 export interface Course {
   id: string;
   code: string;
@@ -9,6 +25,9 @@ export interface Course {
   year: string;
   inProgress: boolean;
   color: string;
+  grades?: GradeItem[];
+  syllabus?: SyllabusItem[];
+  targetAverage?: number;
 }
 
 export type TaskStatus = 'todo' | 'in_progress' | 'done';
@@ -56,4 +75,13 @@ export interface NotebookNote {
   tags: string[];
   createdAt: string;
   content: string;
+}
+
+export interface FirebaseConfig {
+  apiKey: string;
+  authDomain: string;
+  projectId: string;
+  storageBucket: string;
+  messagingSenderId: string;
+  appId: string;
 }
