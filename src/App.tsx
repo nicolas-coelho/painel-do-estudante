@@ -288,9 +288,9 @@ export const App: React.FC = () => {
       />
 
       {/* Main Content Area */}
-      <main className="max-w-6xl mx-auto px-4 md:px-8 mt-6">
+      <main className="max-w-7xl 2xl:max-w-[1560px] mx-auto px-4 md:px-8 xl:px-10 mt-6">
         {/* Navigation Tabs Bar */}
-        <div className="flex items-center gap-1 border-b border-[#e9e9e8] dark:border-[#2f2f2f] mb-6 overflow-x-auto pb-1 text-xs">
+        <div className="flex items-center gap-1.5 md:gap-2 border-b border-[#e9e9e8] dark:border-[#2f2f2f] mb-6 overflow-x-auto pb-1 text-xs md:text-sm">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -298,13 +298,13 @@ export const App: React.FC = () => {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-2 px-3.5 py-2.5 rounded-t-lg font-medium transition-all shrink-0 border-b-2 ${
+                className={`flex items-center gap-2 px-3.5 md:px-4 py-2.5 md:py-3 rounded-t-lg font-medium transition-all shrink-0 border-b-2 whitespace-nowrap ${
                   isActive
-                    ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-white/70 dark:bg-[#202020]'
-                    : 'border-transparent text-[#787774] dark:text-[#9b9a97] hover:text-[#37352f] dark:hover:text-white hover:bg-stone-100/50 dark:hover:bg-stone-800/50'
+                    ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-white/80 dark:bg-[#202020] shadow-sm font-semibold'
+                    : 'border-transparent text-[#787774] dark:text-[#9b9a97] hover:text-[#37352f] dark:hover:text-white hover:bg-stone-100/60 dark:hover:bg-stone-800/60'
                 }`}
               >
-                <Icon className="w-4 h-4" />
+                <Icon className="w-4 h-4 shrink-0" />
                 <span>{tab.label}</span>
                 {tab.count !== undefined && (
                   <span

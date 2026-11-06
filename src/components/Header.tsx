@@ -95,7 +95,7 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Page Title & Notion Icon */}
-      <div className="max-w-6xl mx-auto px-4 md:px-8 pb-6">
+      <div className="max-w-7xl 2xl:max-w-[1560px] mx-auto px-4 md:px-8 xl:px-10 pb-6">
         <div className="relative -mt-10 mb-4 flex items-end justify-between">
           <div className="flex items-center gap-3">
             <div className="w-16 h-16 md:w-20 md:h-20 bg-white dark:bg-[#202020] border-2 border-white dark:border-[#2f2f2f] rounded-2xl shadow-lg flex items-center justify-center text-3xl md:text-4xl select-none">

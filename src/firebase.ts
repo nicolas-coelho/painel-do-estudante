@@ -242,12 +242,12 @@ export function subscribeToFirestore(
   const userDocRef = doc(firestore, 'student_dashboards', docId);
   return onSnapshot(
     userDocRef,
-    (snapshot) => {
+    (snapshot: any) => {
       if (snapshot.exists()) {
         onData(snapshot.data());
       }
     },
-    (err) => {
+    (err: any) => {
       console.error('Erro no listener do Firestore:', err);
       if (onError) onError(err);
     }
