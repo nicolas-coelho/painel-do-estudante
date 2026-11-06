@@ -335,14 +335,75 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
       )}
 
       {errorMsg && (
-        <div className="p-3 bg-red-50 dark:bg-red-950/30 text-red-800 dark:text-red-300 rounded-lg border border-red-200 dark:border-red-900/40 text-xs flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4" />
-            <span>{errorMsg}</span>
+        <div className="p-4 bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 rounded-xl border border-amber-200 dark:border-amber-900/50 text-xs space-y-3 shadow-xs">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-semibold text-sm text-[#37352f] dark:text-[#f3f3f2]">
+                  {errorMsg.includes('API_NOT_ENABLED')
+                    ? 'A API do Google Calendar precisa ser ativada no Google Cloud'
+                    : errorMsg.includes('UNAUTHORIZED_DOMAIN')
+                    ? 'Domínio da Vercel não autorizado no Firebase Auth'
+                    : errorMsg.includes('SESSION_EXPIRED')
+                    ? 'Sessão do Google Calendar expirada'
+                    : 'Aviso sobre a API do Google Calendar'}
+                </h4>
+                <p className="text-xs text-[#787774] dark:text-[#9b9a97] mt-1 leading-relaxed">
+                  {errorMsg.replace(/^(API_NOT_ENABLED|UNAUTHORIZED_DOMAIN|SESSION_EXPIRED|POPUP_BLOCKED|OPERATION_NOT_ALLOWED):\s*/, '')}
+                </p>
+              </div>
+            </div>
+            <button onClick={() => setErrorMsg(null)} className="text-stone-400 hover:text-stone-600 p-1">
+              <X className="w-4 h-4" />
+            </button>
           </div>
-          <button onClick={() => setErrorMsg(null)}>
-            <X className="w-3.5 h-3.5" />
-          </button>
+
+          <div className="flex items-center gap-2 pt-1 flex-wrap">
+            {errorMsg.includes('API_NOT_ENABLED') && (
+              <a
+                href="https://console.cloud.google.com/apis/library/calendar-json.googleapis.com?project=painel-estudante-8b2c"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all shadow-sm"
+              >
+                <span>Ativar Google Calendar API no Google Cloud ↗</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            )}
+
+            {errorMsg.includes('UNAUTHORIZED_DOMAIN') && (
+              <a
+                href="https://console.firebase.google.com/project/painel-estudante-8b2c/authentication/settings"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all shadow-sm"
+              >
+                <span>Autorizar Domínio no Firebase ↗</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            )}
+
+            {errorMsg.includes('SESSION_EXPIRED') && (
+              <button
+                onClick={handleConnectApi}
+                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all shadow-sm"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Reconectar Conta Google</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                setCalendarView('official');
+                setErrorMsg(null);
+              }}
+              className="px-3 py-1.5 border border-[#e9e9e8] dark:border-[#444] bg-white dark:bg-[#202020] hover:bg-stone-50 dark:hover:bg-stone-800 text-[#37352f] dark:text-white rounded-lg text-xs font-medium transition-all"
+            >
+              Ver no Modo Google Oficial (Embed Iframe)
+            </button>
+          </div>
         </div>
       )}
 
@@ -614,19 +675,38 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
 
             {/* OFFICIAL VIEW: Google Calendar Embed */}
             {calendarView === 'official' && (
-              <div className="p-3 w-full h-[650px]">
-                <iframe
-                  src={`https://calendar.google.com/calendar/embed?src=${encodeURIComponent(
-                    calendarId || 'nicolasplcoelho@gmail.com'
-                  )}&ctz=America%2FSao_Paulo&mode=MONTH&showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=1&showCalendars=0&showTz=0`}
-                  style={{ border: 0 }}
-                  width="100%"
-                  height="100%"
-                  frameBorder="0"
-                  scrolling="no"
-                  title="Google Calendar Oficial"
-                  className="rounded-xl border border-[#e9e9e8] dark:border-[#2f2f2f] w-full h-full"
-                />
+              <div className="p-3 w-full flex flex-col gap-2">
+                <div className="flex items-center justify-between text-xs px-3 py-2 bg-[#fcfbf9] dark:bg-[#252525] rounded-lg border border-[#e9e9e8] dark:border-[#2f2f2f]">
+                  <span className="text-[#787774] dark:text-[#9b9a97]">
+                    Exibindo agenda pública/embutida de: <b className="text-[#37352f] dark:text-[#f3f3f2]">{calendarId || 'nicolasplcoelho@gmail.com'}</b>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newId = prompt('Insira o seu e-mail do Gmail ou ID da Agenda Google:', calendarId || 'nicolasplcoelho@gmail.com');
+                      if (newId && onUpdateCalendarId) {
+                        onUpdateCalendarId(newId.trim());
+                      }
+                    }}
+                    className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                  >
+                    Alterar e-mail da agenda
+                  </button>
+                </div>
+                <div className="w-full h-[650px]">
+                  <iframe
+                    src={`https://calendar.google.com/calendar/embed?src=${encodeURIComponent(
+                      calendarId || 'nicolasplcoelho@gmail.com'
+                    )}&ctz=America%2FSao_Paulo&mode=MONTH&showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=1&showCalendars=0&showTz=0`}
+                    style={{ border: 0 }}
+                    width="100%"
+                    height="100%"
+                    frameBorder="0"
+                    scrolling="no"
+                    title="Google Calendar Oficial"
+                    className="rounded-xl border border-[#e9e9e8] dark:border-[#2f2f2f] w-full h-full"
+                  />
+                </div>
               </div>
             )}
           </div>

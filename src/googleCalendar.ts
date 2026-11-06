@@ -29,23 +29,45 @@ export function removeCalendarToken() {
 // Autentica solicitando permissão para acessar o Google Calendar via API
 export async function connectGoogleCalendarApi(): Promise<{ token: string; email?: string }> {
   const auth = getFirebaseAuth();
-  if (!auth) throw new Error('Firebase não inicializado');
+  if (!auth) throw new Error('Firebase não inicializado. Verifique a configuração.');
 
   const provider = new GoogleAuthProvider();
   provider.addScope('https://www.googleapis.com/auth/calendar.events');
-  provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
   provider.setCustomParameters({ prompt: 'consent' });
 
-  const result = await signInWithPopup(auth, provider);
-  const credential = GoogleAuthProvider.credentialFromResult(result);
-  const token = credential?.accessToken;
+  try {
+    const result = await signInWithPopup(auth, provider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    const token = credential?.accessToken;
 
-  if (!token) {
-    throw new Error('Não foi possível obter o token de acesso do Google Calendar.');
+    if (!token) {
+      throw new Error(
+        'O Google não retornou o token de acesso à API. Verifique se o provedor Google está ativo no Firebase Console.'
+      );
+    }
+
+    saveCalendarToken(token);
+    return { token, email: result.user.email || undefined };
+  } catch (err: any) {
+    console.error('Erro na autenticação com Google Calendar:', err);
+    const code = err.code || '';
+    if (code === 'auth/unauthorized-domain') {
+      const hostname = typeof window !== 'undefined' ? window.location.hostname : 'seu domínio';
+      throw new Error(
+        `UNAUTHORIZED_DOMAIN: O domínio "${hostname}" não está autorizado no Firebase Authentication. Adicione-o em Firebase Console > Authentication > Settings > Authorized Domains.`
+      );
+    }
+    if (code === 'auth/popup-blocked') {
+      throw new Error('POPUP_BLOCKED: O navegador bloqueou a janela pop-up do Google. Por favor, permita pop-ups para este site.');
+    }
+    if (code === 'auth/popup-closed-by-user') {
+      throw new Error('A janela de autorização do Google foi fechada antes de concluir o login.');
+    }
+    if (code === 'auth/operation-not-allowed') {
+      throw new Error('OPERATION_NOT_ALLOWED: O login com Google ainda não foi ativado no Firebase Console > Authentication > Sign-in method.');
+    }
+    throw err;
   }
-
-  saveCalendarToken(token);
-  return { token, email: result.user.email || undefined };
 }
 
 // Busca eventos reais diretamente da API do Google Calendar (REST com paginação completa)
@@ -86,10 +108,26 @@ export async function fetchGoogleCalendarEvents(
     if (!res.ok) {
       if (res.status === 401) {
         removeCalendarToken();
-        throw new Error('Sessão expirada. Conecte novamente o Google Calendar.');
+        throw new Error('SESSION_EXPIRED: Sua sessão do Google Calendar expirou (o token dura 1 hora). Conecte novamente.');
       }
       const errData = await res.json().catch(() => ({}));
-      throw new Error(errData?.error?.message || `Erro da API do Google: ${res.statusText}`);
+      const msg = errData?.error?.message || `Erro da API do Google (${res.status}): ${res.statusText}`;
+
+      // Detecção inteligente de API desativada no Google Cloud Console
+      if (
+        res.status === 403 &&
+        (msg.includes('calendar-json.googleapis.com') ||
+          msg.includes('has not been used') ||
+          msg.includes('disabled') ||
+          msg.includes('PERMISSION_DENIED') ||
+          msg.includes('Access Not Configured'))
+      ) {
+        throw new Error(
+          'API_NOT_ENABLED: A API do Google Calendar ainda não foi ativada no projeto Google Cloud do Firebase. Você precisa ativá-la no Google Cloud Console com 1 clique para sincronizar os eventos.'
+        );
+      }
+
+      throw new Error(msg);
     }
 
     const data = await res.json();
