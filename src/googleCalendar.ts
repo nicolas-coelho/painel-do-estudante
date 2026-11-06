@@ -1,0 +1,133 @@
+import { getFirebaseAuth } from './firebase';
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+
+const STORAGE_CALENDAR_TOKEN = 'google_calendar_access_token';
+
+export interface GoogleCalendarEvent {
+  id: string;
+  summary: string;
+  description?: string;
+  start: { dateTime?: string; date?: string };
+  end?: { dateTime?: string; date?: string };
+  location?: string;
+  hangoutLink?: string;
+  htmlLink?: string;
+}
+
+export function getSavedCalendarToken(): string | null {
+  return localStorage.getItem(STORAGE_CALENDAR_TOKEN);
+}
+
+export function saveCalendarToken(token: string) {
+  localStorage.setItem(STORAGE_CALENDAR_TOKEN, token);
+}
+
+export function removeCalendarToken() {
+  localStorage.removeItem(STORAGE_CALENDAR_TOKEN);
+}
+
+// Autentica solicitando permissão para acessar o Google Calendar via API
+export async function connectGoogleCalendarApi(): Promise<{ token: string; email?: string }> {
+  const auth = getFirebaseAuth();
+  if (!auth) throw new Error('Firebase não inicializado');
+
+  const provider = new GoogleAuthProvider();
+  provider.addScope('https://www.googleapis.com/auth/calendar.events');
+  provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
+  provider.setCustomParameters({ prompt: 'consent' });
+
+  const result = await signInWithPopup(auth, provider);
+  const credential = GoogleAuthProvider.credentialFromResult(result);
+  const token = credential?.accessToken;
+
+  if (!token) {
+    throw new Error('Não foi possível obter o token de acesso do Google Calendar.');
+  }
+
+  saveCalendarToken(token);
+  return { token, email: result.user.email || undefined };
+}
+
+// Busca eventos reais diretamente da API do Google Calendar (REST)
+export async function fetchGoogleCalendarEvents(
+  token: string,
+  timeMin?: string,
+  timeMax?: string
+): Promise<GoogleCalendarEvent[]> {
+  const min = timeMin || new Date(Date.now() - 30 * 86400000).toISOString();
+  const max = timeMax || new Date(Date.now() + 60 * 86400000).toISOString();
+
+  const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(
+    min
+  )}&timeMax=${encodeURIComponent(max)}&singleEvents=true&orderBy=startTime&maxResults=50`;
+
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!res.ok) {
+    if (res.status === 401) {
+      removeCalendarToken();
+      throw new Error('Sessão expirada. Conecte novamente o Google Calendar.');
+    }
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData?.error?.message || `Erro da API do Google: ${res.statusText}`);
+  }
+
+  const data = await res.json();
+  return data.items || [];
+}
+
+// Cria um evento real diretamente no Google Calendar via API
+export async function createGoogleCalendarEventDirect(
+  token: string,
+  event: {
+    summary: string;
+    description?: string;
+    startDate: string; // YYYY-MM-DD
+    startTime?: string; // HH:mm
+    endDate?: string;
+    endTime?: string;
+    location?: string;
+  }
+): Promise<GoogleCalendarEvent> {
+  let startObj: any = {};
+  let endObj: any = {};
+
+  if (event.startTime) {
+    const startIso = `${event.startDate}T${event.startTime}:00`;
+    const endIso = event.endTime ? `${event.endDate || event.startDate}T${event.endTime}:00` : `${event.startDate}T${event.startTime}:00`;
+    startObj = { dateTime: new Date(startIso).toISOString() };
+    endObj = { dateTime: new Date(endIso).toISOString() };
+  } else {
+    startObj = { date: event.startDate };
+    endObj = { date: event.endDate || event.startDate };
+  }
+
+  const body = {
+    summary: event.summary,
+    description: event.description || 'Criado via Painel do Estudante',
+    start: startObj,
+    end: endObj,
+    location: event.location,
+  };
+
+  const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData?.error?.message || 'Erro ao criar evento no Google Calendar');
+  }
+
+  return await res.json();
+}
