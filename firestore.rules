@@ -2,9 +2,9 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Permite leitura e escrita direta no painel do estudante em qualquer dispositivo/rede
+    // Permite leitura e escrita apenas para usuários autenticados
     match /student_dashboards/{document=**} {
-      allow read, write: if true;
+      allow read, write: if request.auth != null;
     }
   }
 }

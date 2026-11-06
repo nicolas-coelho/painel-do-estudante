@@ -16,25 +16,25 @@ interface CalendarTabProps {
   courses: Course[];
   tasks: Task[];
   darkMode: boolean;
+  calendarId: string;
+  onUpdateCalendarId: (id: string) => void;
 }
 
-const LOCAL_STORAGE_CALENDAR_ID = 'painel_google_calendar_id';
-
-export const CalendarTab: React.FC<CalendarTabProps> = ({ courses, tasks, darkMode }) => {
-  // Calendar ID can be an email (e.g. yourname@gmail.com) or calendar link/ID
-  const [calendarId, setCalendarId] = useState<string>(() => {
-    return localStorage.getItem(LOCAL_STORAGE_CALENDAR_ID) || '';
-  });
+export const CalendarTab: React.FC<CalendarTabProps> = ({
+  courses,
+  tasks,
+  darkMode,
+  calendarId,
+  onUpdateCalendarId,
+}) => {
   const [isConfigOpen, setIsConfigOpen] = useState<boolean>(false);
-  const [tempId, setTempId] = useState<string>(calendarId);
+  const [tempId, setTempId] = useState<string>(calendarId || 'nicolasplcoelho@gmail.com');
   const [calendarView, setCalendarView] = useState<'MONTH' | 'WEEK' | 'AGENDA'>('MONTH');
 
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_CALENDAR_ID, calendarId);
-  }, [calendarId]);
+  const activeId = calendarId || 'nicolasplcoelho@gmail.com';
 
   // Clean and encode calendar ID for embed URL
-  const cleanCalendarId = calendarId.trim();
+  const cleanCalendarId = activeId.trim();
   const encodedId = encodeURIComponent(cleanCalendarId);
 
   // Google Calendar embed URL
@@ -62,7 +62,7 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({ courses, tasks, darkMo
 
   const handleSaveConfig = (e: React.FormEvent) => {
     e.preventDefault();
-    setCalendarId(tempId.trim());
+    onUpdateCalendarId(tempId.trim());
     setIsConfigOpen(false);
   };
 

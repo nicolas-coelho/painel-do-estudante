@@ -16,7 +16,8 @@ import { NotebookTab } from './components/NotebookTab';
 import { CalendarTab } from './components/CalendarTab';
 import { HomeTab } from './components/HomeTab';
 import { FirebaseModal } from './components/FirebaseModal';
-import { onUserChanged, saveToFirestore, subscribeToFirestore } from './firebase';
+import { LoginScreen } from './components/LoginScreen';
+import { onUserChanged, saveToFirestore, subscribeToFirestore, logoutFirebase, isEmailAllowed } from './firebase';
 import { User } from 'firebase/auth';
 import { BookOpen, CheckSquare, Brain, Clock, FileText, Calendar, LayoutDashboard } from 'lucide-react';
 
@@ -71,6 +72,9 @@ export const App: React.FC = () => {
   const [notes, setNotes] = useState<NotebookNote[]>(() =>
     loadState('study_notes', initialNotes)
   );
+  const [calendarId, setCalendarId] = useState<string>(() =>
+    loadState('study_calendar_id', 'nicolasplcoelho@gmail.com')
+  );
 
   // Listen to Firebase Auth state
   useEffect(() => {
@@ -92,6 +96,7 @@ export const App: React.FC = () => {
       if (data.topics && Array.isArray(data.topics)) setTopics(data.topics);
       if (data.sessions && Array.isArray(data.sessions)) setSessions(data.sessions);
       if (data.notes && Array.isArray(data.notes)) setNotes(data.notes);
+      if (data.calendarId) setCalendarId(data.calendarId);
       setTimeout(() => {
         isSyncingFromCloudRef.current = false;
       }, 500);
@@ -140,6 +145,14 @@ export const App: React.FC = () => {
       if (firebaseUser) saveToFirestore(firebaseUser.uid, { notes });
     }
   }, [notes, firebaseUser]);
+
+  useEffect(() => {
+    localStorage.setItem('study_calendar_id', calendarId);
+    if (!isSyncingFromCloudRef.current) {
+      saveToFirestore('principal', { calendarId });
+      if (firebaseUser) saveToFirestore(firebaseUser.uid, { calendarId });
+    }
+  }, [calendarId, firebaseUser]);
 
   // Quick stats
   const todayStr = new Date().toISOString().split('T')[0];
@@ -321,7 +334,13 @@ export const App: React.FC = () => {
         )}
 
         {activeTab === 'calendar' && (
-          <CalendarTab courses={courses} tasks={tasks} darkMode={darkMode} />
+          <CalendarTab
+            courses={courses}
+            tasks={tasks}
+            darkMode={darkMode}
+            calendarId={calendarId}
+            onUpdateCalendarId={setCalendarId}
+          />
         )}
 
         {activeTab === 'active_recall' && (

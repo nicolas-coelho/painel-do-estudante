@@ -12,6 +12,10 @@ import {
   GoogleAuthProvider,
   signOut,
   onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile,
   User,
   Auth,
 } from 'firebase/auth';
@@ -99,6 +103,96 @@ export async function loginWithGoogle(): Promise<User | null> {
   provider.setCustomParameters({ prompt: 'select_account' });
   const result = await signInWithPopup(firebaseAuth, provider);
   return result.user;
+}
+
+// Autenticação com E-mail e Senha
+export async function loginWithEmail(email: string, pass: string): Promise<User> {
+  const firebaseAuth = getFirebaseAuth();
+  if (!firebaseAuth) {
+    throw new Error('Firebase não inicializado. Configure seu projeto primeiro.');
+  }
+  const result = await signInWithEmailAndPassword(firebaseAuth, email.trim(), pass);
+  return result.user;
+}
+
+// Cadastro com E-mail e Senha
+export async function registerWithEmail(email: string, pass: string, displayName?: string): Promise<User> {
+  const firebaseAuth = getFirebaseAuth();
+  if (!firebaseAuth) {
+    throw new Error('Firebase não inicializado. Configure seu projeto primeiro.');
+  }
+  const result = await createUserWithEmailAndPassword(firebaseAuth, email.trim(), pass);
+  if (displayName && displayName.trim() && result.user) {
+    try {
+      await updateProfile(result.user, { displayName: displayName.trim() });
+    } catch {
+      // ignorar se falhar atualizar nome
+    }
+  }
+  return result.user;
+}
+
+// Recuperação de Senha por E-mail
+export async function resetPassword(email: string): Promise<void> {
+  const firebaseAuth = getFirebaseAuth();
+  if (!firebaseAuth) {
+    throw new Error('Firebase não inicializado. Configure seu projeto primeiro.');
+  }
+  await sendPasswordResetEmail(firebaseAuth, email.trim());
+}
+
+// Whitelist de e-mails autorizados
+export function getAllowedEmails(): string[] {
+  const envEmails = import.meta.env.VITE_ALLOWED_EMAILS;
+  if (!envEmails) return [];
+  return envEmails
+    .split(',')
+    .map((e: string) => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function isEmailAllowed(email: string | null | undefined): boolean {
+  const allowed = getAllowedEmails();
+  // Se nenhuma whitelist foi configurada, permite qualquer usuário autenticado
+  if (allowed.length === 0) return true;
+  if (!email) return false;
+  return allowed.includes(email.trim().toLowerCase());
+}
+
+// Mensagens amigáveis em português para erros do Firebase Auth
+export function getFriendlyAuthErrorMessage(errorCodeOrMessage: string): string {
+  const code = errorCodeOrMessage.toLowerCase();
+  if (code.includes('auth/invalid-credential') || code.includes('auth/wrong-password') || code.includes('invalid-credential')) {
+    return 'E-mail ou senha incorretos. Verifique suas credenciais.';
+  }
+  if (code.includes('auth/user-not-found')) {
+    return 'Nenhuma conta encontrada com este e-mail.';
+  }
+  if (code.includes('auth/email-already-in-use')) {
+    return 'Este e-mail já está em uso por outra conta. Faça login ou recupere a senha.';
+  }
+  if (code.includes('auth/weak-password')) {
+    return 'A senha deve conter no mínimo 6 caracteres.';
+  }
+  if (code.includes('auth/invalid-email')) {
+    return 'O formato do e-mail é inválido.';
+  }
+  if (code.includes('auth/popup-closed-by-user')) {
+    return 'A janela de autenticação foi fechada antes de concluir.';
+  }
+  if (code.includes('auth/popup-blocked')) {
+    return 'O popup de autenticação foi bloqueado pelo seu navegador.';
+  }
+  if (code.includes('auth/too-many-requests')) {
+    return 'Muitas tentativas sem sucesso. Aguarde alguns minutos e tente novamente.';
+  }
+  if (code.includes('auth/network-request-failed')) {
+    return 'Erro de conexão com a internet. Verifique sua rede.';
+  }
+  if (code.includes('auth/operation-not-allowed')) {
+    return 'Este método de login (E-mail/Senha ou Google) ainda não foi ativado no Firebase Console -> Authentication -> Sign-in method.';
+  }
+  return 'Ocorreu um erro ao processar. Tente novamente.';
 }
 
 export async function logoutFirebase(): Promise<void> {

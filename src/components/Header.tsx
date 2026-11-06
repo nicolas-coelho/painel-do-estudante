@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sun, Moon, Download, Upload, BookOpen, Clock, CheckCircle2, Cloud } from 'lucide-react';
+import { Sun, Moon, Download, Upload, BookOpen, Clock, CheckCircle2, Cloud, LogOut, User as UserIcon } from 'lucide-react';
 import { User } from 'firebase/auth';
 
 interface HeaderProps {
@@ -15,6 +15,7 @@ interface HeaderProps {
   onImportData: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onOpenFirebaseModal: () => void;
   firebaseUser: User | null;
+  onLogout?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -25,6 +26,7 @@ export const Header: React.FC<HeaderProps> = ({
   onImportData,
   onOpenFirebaseModal,
   firebaseUser,
+  onLogout,
 }) => {
   return (
     <header className="relative w-full border-b border-[#e9e9e8] dark:border-[#2f2f2f] bg-white dark:bg-[#1f1f1f]">
@@ -32,14 +34,32 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="h-44 md:h-52 w-full bg-gradient-to-r from-slate-800 via-indigo-950 to-stone-900 relative overflow-hidden">
         <div className="absolute inset-0 opacity-20 bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px]"></div>
         <div className="absolute right-4 top-4 flex items-center gap-2 flex-wrap justify-end">
+          {firebaseUser && (
+            <div className="flex items-center gap-2 px-2.5 py-1.5 bg-black/50 text-white text-xs font-medium rounded-md backdrop-blur border border-white/10">
+              {firebaseUser.photoURL ? (
+                <img
+                  src={firebaseUser.photoURL}
+                  alt={firebaseUser.displayName || 'Avatar'}
+                  className="w-4 h-4 rounded-full object-cover"
+                />
+              ) : (
+                <UserIcon className="w-3.5 h-3.5 text-indigo-300" />
+              )}
+              <span className="max-w-[120px] md:max-w-[160px] truncate">
+                {firebaseUser.displayName || firebaseUser.email?.split('@')[0]}
+              </span>
+            </div>
+          )}
+
           <button
             onClick={onOpenFirebaseModal}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md backdrop-blur transition-all border bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border-emerald-500/40"
             title="Sincronização com Google Firebase em Tempo Real"
           >
             <Cloud className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-            <span>{firebaseUser ? (firebaseUser.displayName?.split(' ')[0] || 'Nuvem Conectada') : 'Nuvem Conectada'}</span>
+            <span>Nuvem Ativa</span>
           </button>
+
           <label className="cursor-pointer flex items-center gap-1.5 px-3 py-1.5 bg-black/40 hover:bg-black/60 text-white text-xs font-medium rounded-md backdrop-blur transition-all border border-white/10">
             <Upload className="w-3.5 h-3.5" />
             <span>Restaurar Backup</span>
@@ -60,6 +80,17 @@ export const Header: React.FC<HeaderProps> = ({
           >
             {darkMode ? <Sun className="w-4 h-4 text-amber-300" /> : <Moon className="w-4 h-4 text-slate-200" />}
           </button>
+
+          {onLogout && firebaseUser && (
+            <button
+              onClick={onLogout}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 text-xs font-medium rounded-md backdrop-blur transition-all border border-rose-500/30 cursor-pointer"
+              title="Sair da Conta"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Sair</span>
+            </button>
+          )}
         </div>
       </div>
 
