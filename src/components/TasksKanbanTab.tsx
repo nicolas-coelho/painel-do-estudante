@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Task, Course, TaskStatus, TaskType } from '../types';
-import { Plus, Calendar, CheckSquare, Clock, AlertCircle, Trash2, X } from 'lucide-react';
+import { Plus, Calendar, AlertCircle, Trash2, X, GripVertical } from 'lucide-react';
 
 interface TasksKanbanTabProps {
   tasks: Task[];
@@ -19,6 +19,8 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
 }) => {
   const [selectedCourse, setSelectedCourse] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dragOverColId, setDragOverColId] = useState<TaskStatus | null>(null);
 
   // New task form state
   const [name, setName] = useState('');
@@ -32,10 +34,10 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
     (t) => selectedCourse === 'all' || t.courseId === selectedCourse
   );
 
-  const columns: { id: TaskStatus; label: string; color: string }[] = [
-    { id: 'todo', label: 'A Fazer', color: 'border-amber-500/30' },
-    { id: 'in_progress', label: 'Em Andamento', color: 'border-blue-500/30' },
-    { id: 'done', label: 'Concluído', color: 'border-emerald-500/30' },
+  const columns: { id: TaskStatus; label: string; badgeColor: string }[] = [
+    { id: 'todo', label: 'A Fazer', badgeColor: 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400' },
+    { id: 'in_progress', label: 'Em Andamento', badgeColor: 'bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400' },
+    { id: 'done', label: 'Concluído', badgeColor: 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400' },
   ];
 
   const handleCreate = (e: React.FormEvent) => {
@@ -70,6 +72,51 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
         return 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400';
       default:
         return 'bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300';
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    e.dataTransfer.setData('text/plain', id);
+    e.dataTransfer.effectAllowed = 'move';
+    setDraggedTaskId(id);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedTaskId(null);
+    setDragOverColId(null);
+  };
+
+  const handleDragOver = (e: React.DragEvent, colId: TaskStatus) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverColId !== colId) {
+      setDragOverColId(colId);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent, colId: TaskStatus) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      if (dragOverColId === colId) {
+        setDragOverColId(null);
+      }
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent, targetStatus: TaskStatus) => {
+    e.preventDefault();
+    setDragOverColId(null);
+    setDraggedTaskId(null);
+
+    const taskId = e.dataTransfer.getData('text/plain');
+    if (!taskId) return;
+
+    const taskToMove = tasks.find((t) => t.id === taskId);
+    if (taskToMove && taskToMove.status !== targetStatus) {
+      onUpdateTask({
+        ...taskToMove,
+        status: targetStatus,
+      });
     }
   };
 
@@ -113,58 +160,93 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
         </button>
       </div>
 
+      {/* Helpful Hint */}
+      <div className="flex items-center gap-2 text-[11px] text-[#787774] dark:text-[#9b9a97] bg-white/60 dark:bg-[#202020]/60 px-3 py-1.5 rounded-lg border border-[#e9e9e8] dark:border-[#2f2f2f] w-fit">
+        <GripVertical className="w-3.5 h-3.5 text-blue-500" />
+        <span>Arraste e solte os cartões entre as colunas para mudar o status da tarefa.</span>
+      </div>
+
       {/* Kanban Board Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {columns.map((col) => {
           const colTasks = filteredTasks.filter((t) => t.status === col.id);
+          const isOver = dragOverColId === col.id;
+
           return (
             <div
               key={col.id}
-              className={`flex flex-col bg-[#f7f6f3]/60 dark:bg-[#1e1e1e] rounded-xl p-3 border border-[#e9e9e8] dark:border-[#2f2f2f] min-h-[400px]`}
+              onDragOver={(e) => handleDragOver(e, col.id)}
+              onDragLeave={(e) => handleDragLeave(e, col.id)}
+              onDrop={(e) => handleDrop(e, col.id)}
+              className={`flex flex-col rounded-xl p-3.5 border transition-all min-h-[440px] ${
+                isOver
+                  ? 'bg-blue-50/60 dark:bg-blue-950/20 border-blue-400 dark:border-blue-500 ring-2 ring-blue-400/20 shadow-md'
+                  : 'bg-[#f7f6f3]/70 dark:bg-[#1e1e1e] border-[#e9e9e8] dark:border-[#2f2f2f]'
+              }`}
             >
+              {/* Column Header */}
               <div className="flex items-center justify-between pb-3 px-1 border-b border-[#e9e9e8] dark:border-[#2f2f2f] mb-3">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#787774] dark:text-[#9b9a97]">
-                  {col.label}
-                </span>
-                <span className="text-xs font-mono font-bold bg-[#e9e9e8] dark:bg-[#2d2d2d] px-2 py-0.5 rounded-full">
-                  {colTasks.length}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#37352f] dark:text-[#f3f3f2]">
+                    {col.label}
+                  </span>
+                  <span className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-full ${col.badgeColor}`}>
+                    {colTasks.length}
+                  </span>
+                </div>
               </div>
 
+              {/* Cards List */}
               <div className="space-y-3 flex-1 overflow-y-auto">
                 {colTasks.map((task) => {
                   const course = courses.find((c) => c.id === task.courseId);
                   const isLate = task.status !== 'done' && new Date(task.dueDate) < new Date(new Date().setHours(0,0,0,0));
+                  const isDragging = draggedTaskId === task.id;
 
                   return (
                     <div
                       key={task.id}
-                      className="group bg-white dark:bg-[#252525] p-3.5 rounded-lg border border-[#e9e9e8] dark:border-[#333333] hover:shadow-md transition-all space-y-2 relative"
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, task.id)}
+                      onDragEnd={handleDragEnd}
+                      className={`group bg-white dark:bg-[#252525] p-3.5 rounded-xl border border-[#e9e9e8] dark:border-[#333333] hover:border-blue-300 dark:hover:border-blue-500/50 hover:shadow-md transition-all space-y-2 relative select-none cursor-grab active:cursor-grabbing ${
+                        isDragging ? 'opacity-40 scale-[0.98] ring-2 ring-blue-500 shadow-none' : ''
+                      }`}
                     >
+                      {/* Card Header with Badges & Drag Icon */}
                       <div className="flex items-center justify-between gap-1">
-                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${getTypeBadge(task.type)}`}>
-                          {task.type}
-                        </span>
-                        {course && (
-                          <span
-                            className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded"
-                            style={{ backgroundColor: `${course.color}18`, color: course.color }}
-                          >
-                            {course.code}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${getTypeBadge(task.type)}`}>
+                            {task.type}
                           </span>
-                        )}
+                          {course && (
+                            <span
+                              className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded"
+                              style={{ backgroundColor: `${course.color}18`, color: course.color }}
+                            >
+                              {course.code}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1 text-stone-400 group-hover:text-stone-600 dark:text-stone-500 dark:group-hover:text-stone-300 transition-colors">
+                          <GripVertical className="w-3.5 h-3.5" />
+                        </div>
                       </div>
 
-                      <h4 className="text-xs md:text-sm font-medium text-[#37352f] dark:text-[#f3f3f2]">
+                      {/* Card Title */}
+                      <h4 className="text-xs md:text-sm font-medium text-[#37352f] dark:text-[#f3f3f2] leading-snug">
                         {task.name}
                       </h4>
 
+                      {/* Card Notes */}
                       {task.notes && (
-                        <p className="text-[11px] text-[#787774] dark:text-[#9b9a97] line-clamp-2">
+                        <p className="text-[11px] text-[#787774] dark:text-[#9b9a97] line-clamp-2 leading-relaxed">
                           {task.notes}
                         </p>
                       )}
 
+                      {/* Card Footer */}
                       <div className="flex items-center justify-between pt-1 text-[11px] text-[#787774] dark:text-[#9b9a97]">
                         <div className={`flex items-center gap-1 ${isLate ? 'text-red-500 font-semibold' : ''}`}>
                           <Calendar className="w-3 h-3" />
@@ -172,17 +254,18 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
                           {isLate && <AlertCircle className="w-3 h-3" />}
                         </div>
 
-                        {/* Status switcher */}
+                        {/* Status switcher fallback buttons + Delete */}
                         <div className="flex items-center gap-1">
                           {col.id !== 'todo' && (
                             <button
-                              onClick={() =>
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 onUpdateTask({
                                   ...task,
                                   status: col.id === 'done' ? 'in_progress' : 'todo',
-                                })
-                              }
-                              className="px-1.5 py-0.5 text-[10px] bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 rounded"
+                                });
+                              }}
+                              className="px-1.5 py-0.5 text-[10px] bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 rounded transition-colors"
                               title="Recuar status"
                             >
                               ←
@@ -190,22 +273,26 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
                           )}
                           {col.id !== 'done' && (
                             <button
-                              onClick={() =>
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 onUpdateTask({
                                   ...task,
                                   status: col.id === 'todo' ? 'in_progress' : 'done',
-                                })
-                              }
-                              className="px-1.5 py-0.5 text-[10px] bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 rounded"
+                                });
+                              }}
+                              className="px-1.5 py-0.5 text-[10px] bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 rounded transition-colors"
                               title="Avançar status"
                             >
                               →
                             </button>
                           )}
                           <button
-                            onClick={() => onDeleteTask(task.id)}
-                            className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded"
-                            title="Excluir"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDeleteTask(task.id);
+                            }}
+                            className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded transition-colors"
+                            title="Excluir tarefa"
                           >
                             <Trash2 className="w-3 h-3" />
                           </button>
@@ -215,9 +302,17 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
                   );
                 })}
 
-                {colTasks.length === 0 && (
-                  <div className="h-28 flex items-center justify-center text-xs text-[#787774] dark:text-[#666] border border-dashed border-[#e9e9e8] dark:border-[#333] rounded-lg">
-                    Nenhuma tarefa aqui
+                {/* Drop Target Helper when Dragging Over */}
+                {isOver && (
+                  <div className="h-16 border-2 border-dashed border-blue-400 dark:border-blue-500 rounded-xl bg-blue-50/50 dark:bg-blue-950/30 flex items-center justify-center text-xs text-blue-600 dark:text-blue-400 font-medium animate-pulse">
+                    Solte aqui para mover para {col.label}
+                  </div>
+                )}
+
+                {colTasks.length === 0 && !isOver && (
+                  <div className="h-32 flex flex-col items-center justify-center text-xs text-[#787774] dark:text-[#666] border border-dashed border-[#e9e9e8] dark:border-[#333] rounded-xl p-4 text-center">
+                    <span>Nenhuma tarefa aqui</span>
+                    <span className="text-[10px] text-stone-400 mt-1">Arraste um cartão para cá</span>
                   </div>
                 )}
               </div>
