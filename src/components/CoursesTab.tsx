@@ -33,6 +33,7 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
   onDeleteCourse,
 }) => {
   const [filter, setFilter] = useState<'all' | 'in_progress'>('in_progress');
+  const [semesterFilter, setSemesterFilter] = useState<string>('all');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
   const [activeModalTab, setActiveModalTab] = useState<'general' | 'grades' | 'syllabus' | 'tasks'>('general');
@@ -57,7 +58,14 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
   // New syllabus item state inside edit modal
   const [newSyllabusTitle, setNewSyllabusTitle] = useState('');
 
-  const filteredCourses = courses.filter((c) => (filter === 'all' ? true : c.inProgress));
+  const filteredCourses = courses.filter((c) => {
+    const matchesStatus = filter === 'all' ? true : c.inProgress;
+    const matchesSemester =
+      semesterFilter === 'all'
+        ? true
+        : c.semester?.toLowerCase().includes(semesterFilter === '1º Semestre' ? '1' : '2');
+    return matchesStatus && matchesSemester;
+  });
 
   // Quick calculations for a course
   const calculateAverage = (grades?: GradeItem[]): number | null => {
@@ -196,27 +204,42 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
     <div className="space-y-6">
       {/* Controls & Filter bar */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-1 bg-[#efeeea] dark:bg-[#2a2a2a] p-1 rounded-lg">
-          <button
-            onClick={() => setFilter('in_progress')}
-            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-              filter === 'in_progress'
-                ? 'bg-white dark:bg-[#1f1f1f] text-[#37352f] dark:text-white shadow-sm'
-                : 'text-[#787774] dark:text-[#9b9a97] hover:text-[#37352f]'
-            }`}
-          >
-            Disciplinas do Semestre ({courses.filter((c) => c.inProgress).length})
-          </button>
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-              filter === 'all'
-                ? 'bg-white dark:bg-[#1f1f1f] text-[#37352f] dark:text-white shadow-sm'
-                : 'text-[#787774] dark:text-[#9b9a97] hover:text-[#37352f]'
-            }`}
-          >
-            Todas ({courses.length})
-          </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1 bg-[#efeeea] dark:bg-[#2a2a2a] p-1 rounded-lg">
+            <button
+              onClick={() => setFilter('in_progress')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                filter === 'in_progress'
+                  ? 'bg-white dark:bg-[#1f1f1f] text-[#37352f] dark:text-white shadow-sm'
+                  : 'text-[#787774] dark:text-[#9b9a97] hover:text-[#37352f]'
+              }`}
+            >
+              Em Andamento ({courses.filter((c) => c.inProgress).length})
+            </button>
+            <button
+              onClick={() => setFilter('all')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                filter === 'all'
+                  ? 'bg-white dark:bg-[#1f1f1f] text-[#37352f] dark:text-white shadow-sm'
+                  : 'text-[#787774] dark:text-[#9b9a97] hover:text-[#37352f]'
+              }`}
+            >
+              Todas ({courses.length})
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <select
+              value={semesterFilter}
+              onChange={(e) => setSemesterFilter(e.target.value)}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-[#e9e9e8] dark:border-[#333] bg-[#efeeea] dark:bg-[#2a2a2a] text-[#37352f] dark:text-[#d4d4d4] focus:outline-none focus:border-blue-500 shadow-sm"
+              title="Filtrar por Semestre"
+            >
+              <option value="all" className="dark:bg-[#202020]">Todos os Semestres</option>
+              <option value="1º Semestre" className="dark:bg-[#202020]">1º Semestre</option>
+              <option value="2º Semestre" className="dark:bg-[#202020]">2º Semestre</option>
+            </select>
+          </div>
         </div>
 
         <button
@@ -498,12 +521,14 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
 
                     <div>
                       <label className="block text-[#787774] dark:text-[#9b9a97] mb-1 font-medium">Semestre</label>
-                      <input
-                        type="text"
-                        value={editingCourse.semester}
+                      <select
+                        value={editingCourse.semester || '1º Semestre'}
                         onChange={(e) => setEditingCourse({ ...editingCourse, semester: e.target.value })}
-                        className="w-full px-3 py-2 rounded-lg border border-[#e9e9e8] dark:border-[#333] bg-transparent focus:outline-none focus:border-blue-500"
-                      />
+                        className="w-full px-3 py-2 rounded-lg border border-[#e9e9e8] dark:border-[#333] bg-transparent focus:outline-none focus:border-blue-500 text-xs md:text-sm"
+                      >
+                        <option value="1º Semestre" className="dark:bg-[#202020]">1º Semestre</option>
+                        <option value="2º Semestre" className="dark:bg-[#202020]">2º Semestre</option>
+                      </select>
                     </div>
 
                     <div>
@@ -952,12 +977,14 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[#787774] dark:text-[#9b9a97] mb-1 font-medium">Semestre</label>
-                  <input
-                    type="text"
+                  <select
                     value={newSemester}
                     onChange={(e) => setNewSemester(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-[#e9e9e8] dark:border-[#333] bg-transparent focus:outline-none focus:border-blue-500"
-                  />
+                    className="w-full px-3 py-2 rounded-lg border border-[#e9e9e8] dark:border-[#333] bg-transparent focus:outline-none focus:border-blue-500 text-xs md:text-sm"
+                  >
+                    <option value="1º Semestre" className="dark:bg-[#202020]">1º Semestre</option>
+                    <option value="2º Semestre" className="dark:bg-[#202020]">2º Semestre</option>
+                  </select>
                 </div>
                 <div>
                   <label className="block text-[#787774] dark:text-[#9b9a97] mb-1 font-medium">Ano</label>
