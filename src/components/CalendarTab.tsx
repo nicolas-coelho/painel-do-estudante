@@ -30,11 +30,16 @@ interface CalendarTabProps {
   courses: Course[];
   tasks: Task[];
   darkMode: boolean;
-  calendarId: string;
-  onUpdateCalendarId: (id: string) => void;
+  calendarId?: string;
+  onUpdateCalendarId?: (id: string) => void;
 }
 
-export const CalendarTab: React.FC<CalendarTabProps> = ({ courses, tasks }) => {
+export const CalendarTab: React.FC<CalendarTabProps> = ({
+  courses,
+  tasks,
+  calendarId,
+  onUpdateCalendarId,
+}) => {
   const [token, setToken] = useState<string | null>(() => getSavedCalendarToken());
   const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -43,7 +48,7 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({ courses, tasks }) => {
 
   // Calendar date navigation
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [calendarView, setCalendarView] = useState<'month' | 'agenda'>('month');
+  const [calendarView, setCalendarView] = useState<'month' | 'agenda' | 'official'>('month');
 
   // Modal new event state
   const [isNewEventModalOpen, setIsNewEventModalOpen] = useState(false);
@@ -182,15 +187,41 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({ courses, tasks }) => {
     .filter((t) => t.status !== 'done' && t.dueDate)
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 
+  // Helper seguro para converter eventos do Google Calendar para YYYY-MM-DD no fuso LOCAL
+  const getEventDateStr = (ev: GoogleCalendarEvent): string => {
+    if (!ev || !ev.start) return '';
+    if (ev.start.date) return ev.start.date;
+    if (ev.start.dateTime) {
+      const d = new Date(ev.start.dateTime);
+      if (!isNaN(d.getTime())) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      }
+    }
+    return '';
+  };
+
+  const getEventTimeStr = (ev: GoogleCalendarEvent): string => {
+    if (!ev || !ev.start?.dateTime) return '';
+    const d = new Date(ev.start.dateTime);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Total de eventos no mês atualmente visualizado
+  const currentMonthStr = `${year}-${String(month + 1).padStart(2, '0')}`;
+  const eventsInCurrentMonth = googleEvents.filter((ev) =>
+    getEventDateStr(ev).startsWith(currentMonthStr)
+  );
+
   // Map events by date (YYYY-MM-DD)
   const getEventsForDay = (day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
-    // Google API events
-    const gEvts = googleEvents.filter((ev) => {
-      const d = ev.start.dateTime ? ev.start.dateTime.split('T')[0] : ev.start.date;
-      return d === dateStr;
-    });
+    // Google API events com proteção contra undefined e fuso horário correto
+    const gEvts = googleEvents.filter((ev) => getEventDateStr(ev) === dateStr);
 
     // Provas
     const exams = upcomingExams.filter((ex) => ex.date === dateStr);
@@ -325,7 +356,7 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({ courses, tasks }) => {
                 <div className="flex items-center gap-1 bg-[#efeeea] dark:bg-[#1e1e1e] p-1 rounded-lg">
                   <button
                     onClick={() => setCalendarView('month')}
-                    className={`px-3 py-1 rounded-md font-medium transition-all ${
+                    className={`px-3 py-1 rounded-md font-medium transition-all cursor-pointer ${
                       calendarView === 'month'
                         ? 'bg-white dark:bg-[#2a2a2a] text-[#37352f] dark:text-white shadow-sm'
                         : 'text-[#787774] dark:text-[#9b9a97]'
@@ -335,13 +366,24 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({ courses, tasks }) => {
                   </button>
                   <button
                     onClick={() => setCalendarView('agenda')}
-                    className={`px-3 py-1 rounded-md font-medium transition-all ${
+                    className={`px-3 py-1 rounded-md font-medium transition-all cursor-pointer ${
                       calendarView === 'agenda'
                         ? 'bg-white dark:bg-[#2a2a2a] text-[#37352f] dark:text-white shadow-sm'
                         : 'text-[#787774] dark:text-[#9b9a97]'
                     }`}
                   >
                     Lista de Eventos ({googleEvents.length})
+                  </button>
+                  <button
+                    onClick={() => setCalendarView('official')}
+                    className={`px-3 py-1 rounded-md font-medium transition-all cursor-pointer ${
+                      calendarView === 'official'
+                        ? 'bg-white dark:bg-[#2a2a2a] text-[#37352f] dark:text-white shadow-sm'
+                        : 'text-[#787774] dark:text-[#9b9a97]'
+                    }`}
+                    title="Ver no Google Calendar oficial integrado"
+                  >
+                    Google Oficial
                   </button>
                 </div>
 
@@ -360,6 +402,28 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({ courses, tasks }) => {
             {/* MONTH VIEW: Native Responsive Grid */}
             {calendarView === 'month' && (
               <div className="p-3">
+                {/* Banner de aviso se houver eventos em outro mês */}
+                {googleEvents.length > 0 && eventsInCurrentMonth.length === 0 && (
+                  <div className="mb-3 p-2.5 rounded-lg bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-900/40 text-xs text-blue-800 dark:text-blue-300 flex items-center justify-between gap-2">
+                    <span>
+                      ℹ️ Você tem <b>{googleEvents.length} eventos</b> na sua agenda do Google em outros meses.
+                    </span>
+                    <button
+                      onClick={() => {
+                        const firstWithDate = googleEvents.find((e) => getEventDateStr(e));
+                        if (firstWithDate) {
+                          const dStr = getEventDateStr(firstWithDate);
+                          const [y, m] = dStr.split('-').map(Number);
+                          setCurrentDate(new Date(y, m - 1, 1));
+                        }
+                      }}
+                      className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[11px] font-medium shrink-0 cursor-pointer shadow-xs transition-colors"
+                    >
+                      Ir para o mês com eventos
+                    </button>
+                  </div>
+                )}
+
                 {/* Days of week header */}
                 <div className="grid grid-cols-7 gap-1 text-center font-semibold text-[11px] text-[#9b9a97] uppercase tracking-wider pb-2 border-b border-[#f0f0ee] dark:border-[#2a2a2a]">
                   <div>Dom</div>
@@ -388,11 +452,16 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({ courses, tasks }) => {
                     return (
                       <div
                         key={`day-${dayNum}`}
-                        className={`min-h-[95px] p-1.5 rounded-xl border flex flex-col justify-between transition-all ${
+                        onClick={() => {
+                          setEventDate(dateStr);
+                          setIsNewEventModalOpen(true);
+                        }}
+                        className={`min-h-[95px] p-1.5 rounded-xl border flex flex-col justify-between transition-all cursor-pointer ${
                           isToday
                             ? 'border-blue-500 bg-blue-50/20 dark:bg-blue-950/10'
-                            : 'border-[#f0f0ee] dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] hover:border-stone-300 dark:hover:border-stone-700'
+                            : 'border-[#f0f0ee] dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] hover:border-blue-300 dark:hover:border-blue-700'
                         }`}
+                        title="Clique para adicionar um evento neste dia"
                       >
                         <div className="flex items-center justify-between mb-1">
                           <span
@@ -432,15 +501,22 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({ courses, tasks }) => {
                           ))}
 
                           {/* Eventos Google API */}
-                          {gEvts.map((ge) => (
-                            <div
-                              key={ge.id}
-                              className="px-1.5 py-0.5 rounded font-medium bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 truncate"
-                              title={ge.summary}
-                            >
-                              🗓️ {ge.summary}
-                            </div>
-                          ))}
+                          {gEvts.map((ge) => {
+                            const time = getEventTimeStr(ge);
+                            return (
+                              <div
+                                key={ge.id}
+                                className="px-1.5 py-0.5 rounded font-medium bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300 truncate hover:bg-blue-200 dark:hover:bg-blue-900 transition-colors"
+                                title={`${time ? `${time} - ` : ''}${ge.summary}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (ge.htmlLink) window.open(ge.htmlLink, '_blank');
+                                }}
+                              >
+                                🗓️ {time ? <span className="font-semibold">{time} </span> : null}{ge.summary}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     );
@@ -454,9 +530,9 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({ courses, tasks }) => {
               <div className="divide-y divide-[#f0f0ee] dark:divide-[#2a2a2a] p-4 space-y-3">
                 {googleEvents.length > 0 ? (
                   googleEvents.map((evt) => {
-                    const startStr = evt.start.dateTime
+                    const startStr = evt.start?.dateTime
                       ? new Date(evt.start.dateTime).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
-                      : evt.start.date;
+                      : evt.start?.date;
                     return (
                       <div key={evt.id} className="pt-3 pb-2 flex items-start justify-between gap-4">
                         <div className="space-y-1">
@@ -477,17 +553,36 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({ courses, tasks }) => {
                           </div>
                         </div>
 
-                        {evt.hangoutLink && (
-                          <a
-                            href={evt.hangoutLink}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 shrink-0"
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const dStr = getEventDateStr(evt);
+                              if (dStr) {
+                                const [y, m] = dStr.split('-').map(Number);
+                                setCurrentDate(new Date(y, m - 1, 1));
+                                setCalendarView('month');
+                              }
+                            }}
+                            className="px-2.5 py-1.5 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-[#37352f] dark:text-[#ececed] rounded-lg text-xs font-medium flex items-center gap-1 transition-all cursor-pointer"
+                            title="Ver este evento na Grade Mensal"
                           >
-                            <Video className="w-3.5 h-3.5" />
-                            <span>Entrar no Meet</span>
-                          </a>
-                        )}
+                            <CalendarIcon className="w-3.5 h-3.5" />
+                            <span>Ver na Grade</span>
+                          </button>
+
+                          {evt.hangoutLink && (
+                            <a
+                              href={evt.hangoutLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 shrink-0"
+                            >
+                              <Video className="w-3.5 h-3.5" />
+                              <span>Meet</span>
+                            </a>
+                          )}
+                        </div>
                       </div>
                     );
                   })
@@ -497,6 +592,24 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({ courses, tasks }) => {
                     <p>Nenhum evento retornado da API do Google Calendar.</p>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* OFFICIAL VIEW: Google Calendar Embed */}
+            {calendarView === 'official' && (
+              <div className="p-3 w-full h-[650px]">
+                <iframe
+                  src={`https://calendar.google.com/calendar/embed?src=${encodeURIComponent(
+                    calendarId || 'nicolasplcoelho@gmail.com'
+                  )}&ctz=America%2FSao_Paulo&mode=MONTH&showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=1&showCalendars=0&showTz=0`}
+                  style={{ border: 0 }}
+                  width="100%"
+                  height="100%"
+                  frameBorder="0"
+                  scrolling="no"
+                  title="Google Calendar Oficial"
+                  className="rounded-xl border border-[#e9e9e8] dark:border-[#2f2f2f] w-full h-full"
+                />
               </div>
             )}
           </div>

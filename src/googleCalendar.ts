@@ -54,12 +54,13 @@ export async function fetchGoogleCalendarEvents(
   timeMin?: string,
   timeMax?: string
 ): Promise<GoogleCalendarEvent[]> {
-  const min = timeMin || new Date(Date.now() - 30 * 86400000).toISOString();
-  const max = timeMax || new Date(Date.now() + 60 * 86400000).toISOString();
+  // Janela ampla: 6 meses atrás até 1 ano à frente para cobrir todo o ano letivo
+  const min = timeMin || new Date(Date.now() - 180 * 86400000).toISOString();
+  const max = timeMax || new Date(Date.now() + 365 * 86400000).toISOString();
 
   const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(
     min
-  )}&timeMax=${encodeURIComponent(max)}&singleEvents=true&orderBy=startTime&maxResults=50`;
+  )}&timeMax=${encodeURIComponent(max)}&singleEvents=true&orderBy=startTime&maxResults=250`;
 
   const res = await fetch(url, {
     headers: {
@@ -78,7 +79,16 @@ export async function fetchGoogleCalendarEvents(
   }
 
   const data = await res.json();
-  return data.items || [];
+  // Filtra itens válidos e remove cancelados/deletados
+  const validItems: GoogleCalendarEvent[] = (data.items || []).filter(
+    (item: any) =>
+      item &&
+      item.status !== 'cancelled' &&
+      item.start &&
+      (item.start.dateTime || item.start.date)
+  );
+
+  return validItems;
 }
 
 // Cria um evento real diretamente no Google Calendar via API
