@@ -7,31 +7,28 @@ import {
 } from '../types';
 import { GoogleCalendarEvent } from '../googleCalendar';
 import {
-  DollarSign,
+  Cloud,
+  ChevronRight,
+  ChevronDown,
   Calendar as CalendarIcon,
-  CheckCircle2,
-  AlertCircle,
-  Clock,
+  Check,
   Plus,
-  Filter,
   Trash2,
   Edit2,
-  Check,
-  RotateCcw,
+  DollarSign,
   Sparkles,
+  Heart,
+  Clock,
+  ArrowRight,
+  X,
+  CreditCard,
+  Copy,
   ExternalLink,
   MapPin,
-  TrendingDown,
-  CreditCard,
-  Heart,
-  Home as HomeIcon,
-  Wifi,
-  GraduationCap,
-  ShoppingBag,
-  Car,
+  CheckCircle2,
+  AlertCircle,
   HelpCircle,
-  Copy,
-  ChevronDown,
+  Filter,
 } from 'lucide-react';
 
 interface PersonalLifeTabProps {
@@ -47,108 +44,6 @@ interface PersonalLifeTabProps {
   onDeleteAppointment: (id: string) => void;
 }
 
-const CATEGORY_CONFIG: Record<
-  BillCategory,
-  { label: string; icon: any; color: string; bg: string; darkBg: string }
-> = {
-  moradia: {
-    label: 'Moradia / Utilidades',
-    icon: HomeIcon,
-    color: 'text-amber-600 dark:text-amber-400',
-    bg: 'bg-amber-50 text-amber-700 border-amber-200',
-    darkBg: 'dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/60',
-  },
-  servicos: {
-    label: 'Serviços & Internet',
-    icon: Wifi,
-    color: 'text-cyan-600 dark:text-cyan-400',
-    bg: 'bg-cyan-50 text-cyan-700 border-cyan-200',
-    darkBg: 'dark:bg-cyan-950/40 dark:text-cyan-300 dark:border-cyan-800/60',
-  },
-  educacao: {
-    label: 'Educação / Cursos',
-    icon: GraduationCap,
-    color: 'text-blue-600 dark:text-blue-400',
-    bg: 'bg-blue-50 text-blue-700 border-blue-200',
-    darkBg: 'dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800/60',
-  },
-  saude: {
-    label: 'Saúde & Cuidados',
-    icon: Heart,
-    color: 'text-rose-600 dark:text-rose-400',
-    bg: 'bg-rose-50 text-rose-700 border-rose-200',
-    darkBg: 'dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/60',
-  },
-  alimentacao: {
-    label: 'Alimentação / Mercado',
-    icon: ShoppingBag,
-    color: 'text-emerald-600 dark:text-emerald-400',
-    bg: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    darkBg: 'dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60',
-  },
-  transporte: {
-    label: 'Transporte / Veículo',
-    icon: Car,
-    color: 'text-violet-600 dark:text-violet-400',
-    bg: 'bg-violet-50 text-violet-700 border-violet-200',
-    darkBg: 'dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800/60',
-  },
-  lazer: {
-    label: 'Lazer & Assinaturas',
-    icon: Sparkles,
-    color: 'text-pink-600 dark:text-pink-400',
-    bg: 'bg-pink-50 text-pink-700 border-pink-200',
-    darkBg: 'dark:bg-pink-950/40 dark:text-pink-300 dark:border-pink-800/60',
-  },
-  outros: {
-    label: 'Outros',
-    icon: HelpCircle,
-    color: 'text-stone-600 dark:text-stone-400',
-    bg: 'bg-stone-50 text-stone-700 border-stone-200',
-    darkBg: 'dark:bg-stone-900/60 dark:text-stone-300 dark:border-stone-800',
-  },
-};
-
-const APPOINTMENT_CATEGORY_CONFIG: Record<
-  AppointmentCategory,
-  { label: string; icon: any; color: string; badgeClass: string }
-> = {
-  saude: {
-    label: 'Saúde & Médico',
-    icon: Heart,
-    color: 'text-rose-500',
-    badgeClass: 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border-rose-200 dark:border-rose-800/60',
-  },
-  pessoal: {
-    label: 'Pessoal / Rotina',
-    icon: UserCheckIcon,
-    color: 'text-blue-500',
-    badgeClass: 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200 dark:border-blue-800/60',
-  },
-  financeiro: {
-    label: 'Financeiro',
-    icon: DollarSign,
-    color: 'text-emerald-500',
-    badgeClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60',
-  },
-  estudo: {
-    label: 'Estudo Pessoal',
-    icon: GraduationCap,
-    color: 'text-purple-500',
-    badgeClass: 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-200 dark:border-purple-800/60',
-  },
-  outro: {
-    label: 'Outro',
-    icon: HelpCircle,
-    color: 'text-stone-500',
-    badgeClass: 'bg-stone-100 text-stone-800 dark:bg-stone-800 dark:text-stone-300 border-stone-200 dark:border-stone-700',
-  },
-};
-
-function UserCheckIcon(props: any) {
-  return <CheckCircle2 {...props} />;
-}
-
 export const PersonalLifeTab: React.FC<PersonalLifeTabProps> = ({
   bills,
   appointments,
@@ -161,30 +56,39 @@ export const PersonalLifeTab: React.FC<PersonalLifeTabProps> = ({
   onUpdateAppointment,
   onDeleteAppointment,
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'bills' | 'appointments'>('bills');
-  const [billFilter, setBillFilter] = useState<'all' | 'pending' | 'paid' | 'overdue'>('all');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  // Toggle "How to get started"
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
+
+  // Left column active view
+  const [leftView, setLeftView] = useState<'daily' | 'bills' | 'appointments' | 'all'>('daily');
+
+  // Right column 1 (Task/Today) active tab
+  const [rightTaskView, setRightTaskView] = useState<'today' | 'pending'>('today');
+
+  // Right column 2 (Monthly Task & Goals) active tab
+  const [monthlyView, setMonthlyView] = useState<'monthly' | 'all'>('monthly');
+
+  // Quick inputs
+  const [quickInputLeft, setQuickInputLeft] = useState('');
+  const [quickTypeLeft, setQuickTypeLeft] = useState<'bill' | 'appointment'>('bill');
+  const [quickInputRight, setQuickInputRight] = useState('');
 
   // Modais
   const [isBillModalOpen, setIsBillModalOpen] = useState(false);
   const [editingBill, setEditingBill] = useState<PersonalBill | null>(null);
-  const [isAppointmentModalOpen, setIsAppointmentModalOpen] = useState(false);
-  const [editingAppointment, setEditingAppointment] = useState<PersonalAppointment | null>(null);
+  const [isAppModalOpen, setIsAppModalOpen] = useState(false);
+  const [editingApp, setEditingApp] = useState<PersonalAppointment | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
-  // Form states - Contas
+  // Form states - Conta
   const [billTitle, setBillTitle] = useState('');
   const [billAmount, setBillAmount] = useState('');
-  const [billDueDate, setBillDueDate] = useState(
-    new Date().toISOString().split('T')[0]
-  );
+  const [billDueDate, setBillDueDate] = useState(new Date().toISOString().split('T')[0]);
   const [billCategory, setBillCategory] = useState<BillCategory>('moradia');
-  const [billRecurring, setBillRecurring] = useState<'none' | 'monthly' | 'yearly'>('monthly');
   const [billNotes, setBillNotes] = useState('');
   const [billBarcode, setBillBarcode] = useState('');
 
-  // Form states - Compromissos
+  // Form states - Compromisso
   const [appTitle, setAppTitle] = useState('');
   const [appDate, setAppDate] = useState(new Date().toISOString().split('T')[0]);
   const [appTime, setAppTime] = useState('14:00');
@@ -192,27 +96,20 @@ export const PersonalLifeTab: React.FC<PersonalLifeTabProps> = ({
   const [appCategory, setAppCategory] = useState<AppointmentCategory>('pessoal');
   const [appNotes, setAppNotes] = useState('');
 
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
   const todayStr = new Date().toISOString().split('T')[0];
 
-  // Helper para formatar moeda brasileira
   const formatBRL = (val: number) => {
     return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   };
 
-  // Status de vencimento
-  const getDueStatus = (dueDate: string, status: 'pending' | 'paid') => {
-    if (status === 'paid') return { label: 'Pago', color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/60' };
-    if (dueDate < todayStr) return { label: 'Atrasado', color: 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800/60' };
-    if (dueDate === todayStr) return { label: 'Vence hoje!', color: 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800/60' };
-    return { label: `Vence ${dueDate.split('-').reverse().slice(0, 2).join('/')}`, color: 'text-stone-600 dark:text-stone-400 bg-stone-100 dark:bg-stone-800 border-stone-200 dark:border-stone-700' };
-  };
-
-  // Cálculos de métricas
-  const metrics = useMemo(() => {
+  // KPIs
+  const { pendingTotal, paidTotal, pendingCount, overdueCount } = useMemo(() => {
     let pendingTotal = 0;
     let paidTotal = 0;
-    let overdueCount = 0;
     let pendingCount = 0;
+    let overdueCount = 0;
 
     bills.forEach((b) => {
       if (b.status === 'paid') {
@@ -224,56 +121,146 @@ export const PersonalLifeTab: React.FC<PersonalLifeTabProps> = ({
       }
     });
 
-    const pendingAppointments = appointments.filter((a) => !a.completed);
+    return { pendingTotal, paidTotal, pendingCount, overdueCount };
+  }, [bills, todayStr]);
 
-    return {
-      pendingTotal,
-      paidTotal,
-      overdueCount,
-      pendingCount,
-      totalBills: bills.length,
-      pendingAppointmentsCount: pendingAppointments.length,
-    };
-  }, [bills, appointments, todayStr]);
+  // Itens unificados para o Daily Log agrupados por data
+  const groupedDailyLog = useMemo(() => {
+    const entries: {
+      id: string;
+      title: string;
+      date: string;
+      type: 'bill' | 'appointment';
+      completed: boolean;
+      time?: string;
+      amount?: number;
+      category?: string;
+      raw: PersonalBill | PersonalAppointment;
+    }[] = [];
 
-  // Contas filtradas
-  const filteredBills = useMemo(() => {
-    return bills
-      .filter((b) => {
-        if (billFilter === 'pending') return b.status === 'pending';
-        if (billFilter === 'paid') return b.status === 'paid';
-        if (billFilter === 'overdue') return b.status === 'pending' && b.dueDate < todayStr;
-        return true;
-      })
-      .filter((b) => {
-        if (categoryFilter === 'all') return true;
-        return b.category === categoryFilter;
-      })
-      .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-  }, [bills, billFilter, categoryFilter, todayStr]);
+    bills.forEach((b) => {
+      entries.push({
+        id: b.id,
+        title: b.title,
+        date: b.dueDate,
+        type: 'bill',
+        completed: b.status === 'paid',
+        amount: b.amount,
+        category: b.category,
+        raw: b,
+      });
+    });
 
-  // Compromissos ordenados
-  const upcomingAppointments = useMemo(() => {
-    return appointments
-      .filter((a) => !a.completed)
-      .sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
-  }, [appointments]);
+    appointments.forEach((a) => {
+      entries.push({
+        id: a.id,
+        title: a.title,
+        date: a.date,
+        type: 'appointment',
+        completed: a.completed,
+        time: a.time,
+        category: a.category,
+        raw: a,
+      });
+    });
 
-  const completedAppointments = useMemo(() => {
-    return appointments
-      .filter((a) => a.completed)
-      .sort((a, b) => (b.date + (b.time || '')).localeCompare(a.date + (a.time || '')));
-  }, [appointments]);
+    let filtered = entries;
+    if (leftView === 'bills') filtered = entries.filter((e) => e.type === 'bill');
+    if (leftView === 'appointments') filtered = entries.filter((e) => e.type === 'appointment');
 
-  // Detecção inteligente de eventos pessoais / contas no Google Calendar
+    filtered.sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
+
+    const groups: Record<string, typeof entries> = {};
+    filtered.forEach((item) => {
+      if (!groups[item.date]) groups[item.date] = [];
+      groups[item.date].push(item);
+    });
+
+    return groups;
+  }, [bills, appointments, leftView]);
+
+  // Formata cabeçalho de data no estilo do print: "03.09 . S"
+  const formatDateHeader = (dateStr: string) => {
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return dateStr;
+    const year = parts[0];
+    const month = parts[1];
+    const day = parts[2];
+
+    const d = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+    const dayNames = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']; // Dom, Seg, Ter, Qua, Qui, Sex, Sáb
+    const dayLetter = dayNames[d.getDay()] || '';
+
+    return `${month}.${day} . ${dayLetter}`;
+  };
+
+  // Itens de hoje para o card direito "Task - Today"
+  const todayTasks = useMemo(() => {
+    const list: {
+      id: string;
+      title: string;
+      completed: boolean;
+      type: 'bill' | 'appointment';
+      amount?: number;
+      time?: string;
+      raw: PersonalBill | PersonalAppointment;
+    }[] = [];
+
+    bills.forEach((b) => {
+      if (rightTaskView === 'today' && b.dueDate === todayStr) {
+        list.push({
+          id: b.id,
+          title: b.title,
+          completed: b.status === 'paid',
+          type: 'bill',
+          amount: b.amount,
+          raw: b,
+        });
+      } else if (rightTaskView === 'pending' && b.status === 'pending') {
+        list.push({
+          id: b.id,
+          title: b.title,
+          completed: false,
+          type: 'bill',
+          amount: b.amount,
+          raw: b,
+        });
+      }
+    });
+
+    appointments.forEach((a) => {
+      if (rightTaskView === 'today' && a.date === todayStr) {
+        list.push({
+          id: a.id,
+          title: a.title,
+          completed: a.completed,
+          type: 'appointment',
+          time: a.time,
+          raw: a,
+        });
+      } else if (rightTaskView === 'pending' && !a.completed) {
+        list.push({
+          id: a.id,
+          title: a.title,
+          completed: false,
+          type: 'appointment',
+          time: a.time,
+          raw: a,
+        });
+      }
+    });
+
+    return list;
+  }, [bills, appointments, rightTaskView, todayStr]);
+
+  // Contas do Google Calendar detectadas
   const detectedCalendarBills = useMemo(() => {
-    const keywords = ['pagar', 'boleto', 'conta', 'fatura', 'aluguel', 'água', 'luz', 'internet', 'inglês', 'mensalidade'];
+    const keywords = ['pagar', 'boleto', 'conta', 'fatura', 'aluguel', 'água', 'luz', 'internet', 'inglês'];
     const candidates: { summary: string; date: string; existing: boolean }[] = [];
 
     googleEvents.forEach((ev) => {
       const titleLower = (ev.summary || '').toLowerCase();
-      const isBill = keywords.some((kw) => titleLower.includes(kw));
-      if (isBill) {
+      if (keywords.some((kw) => titleLower.includes(kw))) {
         const rawDate = ev.start?.date || ev.start?.dateTime?.split('T')[0] || '';
         if (rawDate) {
           const alreadyExists = bills.some(
@@ -281,119 +268,158 @@ export const PersonalLifeTab: React.FC<PersonalLifeTabProps> = ({
               b.title.toLowerCase().includes(titleLower.trim()) ||
               titleLower.includes(b.title.toLowerCase().trim())
           );
-          candidates.push({
-            summary: ev.summary,
-            date: rawDate,
-            existing: alreadyExists,
-          });
+          candidates.push({ summary: ev.summary, date: rawDate, existing: alreadyExists });
         }
       }
     });
-
     return candidates;
   }, [googleEvents, bills]);
 
-  // Abrir modal de criação de conta
+  const handleToggleEntry = (item: { type: 'bill' | 'appointment'; raw: any }) => {
+    if (item.type === 'bill') {
+      const b = item.raw as PersonalBill;
+      const isNowPaid = b.status === 'pending';
+      onUpdateBill({
+        ...b,
+        status: isNowPaid ? 'paid' : 'pending',
+        paidAt: isNowPaid ? todayStr : undefined,
+      });
+    } else {
+      const a = item.raw as PersonalAppointment;
+      onUpdateAppointment({
+        ...a,
+        completed: !a.completed,
+      });
+    }
+  };
+
+  const handleDeleteEntry = (item: { type: 'bill' | 'appointment'; id: string }) => {
+    if (item.type === 'bill') onDeleteBill(item.id);
+    else onDeleteAppointment(item.id);
+  };
+
+  const handleQuickAddLeft = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickInputLeft.trim()) return;
+
+    if (quickTypeLeft === 'bill') {
+      const newBill: PersonalBill = {
+        id: `bill-${Date.now()}`,
+        title: quickInputLeft.trim(),
+        amount: 0,
+        dueDate: todayStr,
+        category: 'outros',
+        status: 'pending',
+      };
+      onAddBill(newBill);
+    } else {
+      const newApp: PersonalAppointment = {
+        id: `app-${Date.now()}`,
+        title: quickInputLeft.trim(),
+        date: todayStr,
+        category: 'pessoal',
+        completed: false,
+      };
+      onAddAppointment(newApp);
+    }
+    setQuickInputLeft('');
+  };
+
+  const handleQuickAddRight = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickInputRight.trim()) return;
+    const newApp: PersonalAppointment = {
+      id: `app-quick-${Date.now()}`,
+      title: quickInputRight.trim(),
+      date: todayStr,
+      category: 'pessoal',
+      completed: false,
+    };
+    onAddAppointment(newApp);
+    setQuickInputRight('');
+  };
+
   const handleOpenAddBill = () => {
     setEditingBill(null);
     setBillTitle('');
     setBillAmount('');
     setBillDueDate(todayStr);
     setBillCategory('moradia');
-    setBillRecurring('monthly');
     setBillNotes('');
     setBillBarcode('');
     setIsBillModalOpen(true);
   };
 
-  // Abrir modal de edição de conta
-  const handleOpenEditBill = (bill: PersonalBill) => {
-    setEditingBill(bill);
-    setBillTitle(bill.title);
-    setBillAmount(String(bill.amount));
-    setBillDueDate(bill.dueDate);
-    setBillCategory(bill.category);
-    setBillRecurring(bill.recurring || 'none');
-    setBillNotes(bill.notes || '');
-    setBillBarcode(bill.barcodeOrLink || '');
+  const handleOpenEditBill = (b: PersonalBill) => {
+    setEditingBill(b);
+    setBillTitle(b.title);
+    setBillAmount(String(b.amount));
+    setBillDueDate(b.dueDate);
+    setBillCategory(b.category);
+    setBillNotes(b.notes || '');
+    setBillBarcode(b.barcodeOrLink || '');
     setIsBillModalOpen(true);
   };
 
-  // Salvar conta
   const handleSaveBill = (e: React.FormEvent) => {
     e.preventDefault();
     if (!billTitle.trim()) return;
-
-    const parsedAmount = parseFloat(billAmount.replace(',', '.')) || 0;
+    const amt = parseFloat(billAmount.replace(',', '.')) || 0;
 
     if (editingBill) {
       onUpdateBill({
         ...editingBill,
         title: billTitle.trim(),
-        amount: parsedAmount,
+        amount: amt,
         dueDate: billDueDate,
         category: billCategory,
-        recurring: billRecurring,
         notes: billNotes.trim() || undefined,
         barcodeOrLink: billBarcode.trim() || undefined,
       });
     } else {
-      const newBill: PersonalBill = {
-        id: `bill-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      onAddBill({
+        id: `bill-${Date.now()}`,
         title: billTitle.trim(),
-        amount: parsedAmount,
+        amount: amt,
         dueDate: billDueDate,
         category: billCategory,
         status: 'pending',
-        recurring: billRecurring,
         notes: billNotes.trim() || undefined,
         barcodeOrLink: billBarcode.trim() || undefined,
-      };
-      onAddBill(newBill);
+      });
     }
     setIsBillModalOpen(false);
   };
 
-  // Alternar status pago/pendente
-  const handleToggleBillStatus = (bill: PersonalBill) => {
-    const isNowPaid = bill.status === 'pending';
-    onUpdateBill({
-      ...bill,
-      status: isNowPaid ? 'paid' : 'pending',
-      paidAt: isNowPaid ? todayStr : undefined,
-    });
-  };
-
-  // Abrir modal de compromisso
   const handleOpenAddAppointment = () => {
-    setEditingAppointment(null);
+    setEditingApp(null);
     setAppTitle('');
     setAppDate(todayStr);
     setAppTime('14:00');
     setAppLocation('');
     setAppCategory('pessoal');
     setAppNotes('');
-    setIsAppointmentModalOpen(true);
+    setIsAppModalOpen(true);
   };
 
-  const handleOpenEditAppointment = (app: PersonalAppointment) => {
-    setEditingAppointment(app);
-    setAppTitle(app.title);
-    setAppDate(app.date);
-    setAppTime(app.time || '14:00');
-    setAppLocation(app.location || '');
-    setAppCategory(app.category);
-    setAppNotes(app.notes || '');
-    setIsAppointmentModalOpen(true);
+  const handleOpenEditAppointment = (a: PersonalAppointment) => {
+    setEditingApp(a);
+    setAppTitle(a.title);
+    setAppDate(a.date);
+    setAppTime(a.time || '14:00');
+    setAppLocation(a.location || '');
+    setAppCategory(a.category);
+    setAppNotes(a.notes || '');
+    setIsAppModalOpen(true);
   };
 
   const handleSaveAppointment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!appTitle.trim()) return;
 
-    if (editingAppointment) {
+    if (editingApp) {
       onUpdateAppointment({
-        ...editingAppointment,
+        ...editingApp,
         title: appTitle.trim(),
         date: appDate,
         time: appTime || undefined,
@@ -402,8 +428,8 @@ export const PersonalLifeTab: React.FC<PersonalLifeTabProps> = ({
         notes: appNotes.trim() || undefined,
       });
     } else {
-      const newApp: PersonalAppointment = {
-        id: `app-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      onAddAppointment({
+        id: `app-${Date.now()}`,
         title: appTitle.trim(),
         date: appDate,
         time: appTime || undefined,
@@ -411,18 +437,9 @@ export const PersonalLifeTab: React.FC<PersonalLifeTabProps> = ({
         category: appCategory,
         completed: false,
         notes: appNotes.trim() || undefined,
-        source: 'manual',
-      };
-      onAddAppointment(newApp);
+      });
     }
-    setIsAppointmentModalOpen(false);
-  };
-
-  const handleToggleAppointmentCompleted = (app: PersonalAppointment) => {
-    onUpdateAppointment({
-      ...app,
-      completed: !app.completed,
-    });
+    setIsAppModalOpen(false);
   };
 
   const handleCopyBarcode = (id: string, text: string) => {
@@ -431,693 +448,715 @@ export const PersonalLifeTab: React.FC<PersonalLifeTabProps> = ({
     setTimeout(() => setCopiedId(null), 2500);
   };
 
-  // Importar evento do Google Calendar como Conta
-  const handleImportCalendarEvent = (item: { summary: string; date: string }) => {
-    const lower = item.summary.toLowerCase();
-    let category: BillCategory = 'moradia';
-    if (lower.includes('inglês') || lower.includes('faculdade') || lower.includes('curso')) category = 'educacao';
-    else if (lower.includes('luz') || lower.includes('água') || lower.includes('aluguel') || lower.includes('condomínio')) category = 'moradia';
-    else if (lower.includes('net') || lower.includes('internet') || lower.includes('desktop')) category = 'servicos';
-
-    const newBill: PersonalBill = {
-      id: `bill-imported-${Date.now()}`,
-      title: item.summary,
-      amount: 0,
-      dueDate: item.date,
-      category,
-      status: 'pending',
-      recurring: 'monthly',
-      notes: 'Importado automaticamente da sua agenda do Google',
-    };
-    onAddBill(newBill);
-  };
-
   return (
-    <div className="space-y-6">
-      {/* Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-[#202020] border border-[#e9e9e8] dark:border-[#2d2d2d] rounded-2xl p-6 shadow-sm">
-        <div>
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="text-2xl">🌱</span>
-            <h1 className="text-xl md:text-2xl font-bold text-[#37352f] dark:text-white">
-              Vida Pessoal & Finanças
-            </h1>
-          </div>
-          <p className="text-sm text-[#787774] dark:text-[#9b9a97]">
-            Controle de contas a pagar, vencimentos, finanças do mês e compromissos da sua rotina pessoal.
-          </p>
-        </div>
+    <div className="space-y-6 max-w-7xl mx-auto font-sans pb-12 animate-fadeIn">
+      {/* ======================================================== */}
+      {/* NOTION COVER BANNER (ESTILO COZY DESK / BULLET JOURNAL)  */}
+      {/* ======================================================== */}
+      <div className="relative w-full rounded-2xl overflow-hidden border border-[#e9e9e8] dark:border-[#2f2f2f] bg-white dark:bg-[#202020] shadow-xs">
+        {/* Imagem de Capa do Notion */}
+        <div className="h-44 md:h-52 w-full relative overflow-hidden bg-stone-800">
+          <img
+            src="https://images.unsplash.com/photo-1499750310107-5fef28a66643?auto=format&fit=crop&w=1600&q=80"
+            alt="Bullet Journal Cover"
+            className="w-full h-full object-cover object-center filter brightness-90 contrast-105"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20" />
 
-        <div className="flex flex-wrap items-center gap-2">
+          {/* Botão de Sync Rápido no topo da imagem */}
           {detectedCalendarBills.filter((c) => !c.existing).length > 0 && (
-            <button
-              onClick={() => setIsImportModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs md:text-sm font-medium rounded-xl bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/50 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 transition-colors shadow-sm"
-            >
-              <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-              <span>Sincronizar Contas da Agenda ({detectedCalendarBills.filter((c) => !c.existing).length})</span>
-            </button>
+            <div className="absolute top-4 right-4">
+              <button
+                onClick={() => setIsImportModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black/60 hover:bg-black/80 text-white backdrop-blur text-xs font-medium border border-white/20 transition-all shadow-sm"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-purple-300" />
+                <span>{detectedCalendarBills.filter((c) => !c.existing).length} contas na agenda</span>
+              </button>
+            </div>
           )}
-
-          <button
-            onClick={handleOpenAddAppointment}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs md:text-sm font-medium rounded-xl bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-[#37352f] dark:text-stone-200 transition-colors"
-          >
-            <CalendarIcon className="w-4 h-4" />
-            <span>+ Novo Compromisso</span>
-          </button>
-
-          <button
-            onClick={handleOpenAddBill}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs md:text-sm font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-colors shadow-sm"
-          >
-            <Plus className="w-4 h-4" />
-            <span>+ Nova Conta a Pagar</span>
-          </button>
-        </div>
-      </div>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 md:gap-4">
-        {/* Total a Pagar Pendente */}
-        <div className="bg-white dark:bg-[#202020] border border-[#e9e9e8] dark:border-[#2d2d2d] rounded-xl p-4 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between text-[#787774] dark:text-[#9b9a97] mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">A Pagar (Pendente)</span>
-            <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-              <DollarSign className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <div className="text-xl md:text-2xl font-bold text-[#37352f] dark:text-white">
-              {formatBRL(metrics.pendingTotal)}
-            </div>
-            <div className="text-xs text-[#787774] dark:text-[#9b9a97] mt-1">
-              {metrics.pendingCount} {metrics.pendingCount === 1 ? 'conta restante' : 'contas restantes'}
-            </div>
-          </div>
         </div>
 
-        {/* Total Pago no Mês */}
-        <div className="bg-white dark:bg-[#202020] border border-[#e9e9e8] dark:border-[#2d2d2d] rounded-xl p-4 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between text-[#787774] dark:text-[#9b9a97] mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Total Já Pago</span>
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-              <CheckCircle2 className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <div className="text-xl md:text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-              {formatBRL(metrics.paidTotal)}
-            </div>
-            <div className="text-xs text-[#787774] dark:text-[#9b9a97] mt-1">
-              Contas quitadas com sucesso
-            </div>
-          </div>
-        </div>
-
-        {/* Contas Atrasadas / Alerta */}
-        <div className={`border rounded-xl p-4 shadow-sm flex flex-col justify-between ${
-          metrics.overdueCount > 0
-            ? 'bg-red-50/70 dark:bg-red-950/30 border-red-200 dark:border-red-900/60'
-            : 'bg-white dark:bg-[#202020] border-[#e9e9e8] dark:border-[#2d2d2d]'
-        }`}>
-          <div className="flex items-center justify-between mb-2">
-            <span className={`text-xs font-semibold uppercase tracking-wider ${
-              metrics.overdueCount > 0 ? 'text-red-700 dark:text-red-400' : 'text-[#787774] dark:text-[#9b9a97]'
-            }`}>
-              Contas Vencidas
-            </span>
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-              metrics.overdueCount > 0
-                ? 'bg-red-100 dark:bg-red-900/60 text-red-600 dark:text-red-400'
-                : 'bg-stone-100 dark:bg-stone-800 text-[#787774]'
-            }`}>
-              <AlertCircle className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <div className={`text-xl md:text-2xl font-bold ${
-              metrics.overdueCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-[#37352f] dark:text-white'
-            }`}>
-              {metrics.overdueCount}
-            </div>
-            <div className="text-xs text-[#787774] dark:text-[#9b9a97] mt-1">
-              {metrics.overdueCount === 0 ? 'Nenhuma conta atrasada 🎉' : 'Requer atenção imediata'}
-            </div>
-          </div>
-        </div>
-
-        {/* Compromissos Pessoais */}
-        <div className="bg-white dark:bg-[#202020] border border-[#e9e9e8] dark:border-[#2d2d2d] rounded-xl p-4 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between text-[#787774] dark:text-[#9b9a97] mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Compromissos</span>
-            <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-              <CalendarIcon className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <div className="text-xl md:text-2xl font-bold text-[#37352f] dark:text-white">
-              {metrics.pendingAppointmentsCount}
-            </div>
-            <div className="text-xs text-[#787774] dark:text-[#9b9a97] mt-1">
-              Médicos, rotina & recados agendados
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Navegação entre Contas e Compromissos */}
-      <div className="flex items-center justify-between border-b border-[#e9e9e8] dark:border-[#2d2d2d] pb-2">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setActiveSubTab('bills')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
-              activeSubTab === 'bills'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-[#787774] dark:text-[#9b9a97] hover:bg-stone-100 dark:hover:bg-stone-800'
-            }`}
-          >
-            <CreditCard className="w-4 h-4" />
-            <span>Contas a Pagar ({bills.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('appointments')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
-              activeSubTab === 'appointments'
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'text-[#787774] dark:text-[#9b9a97] hover:bg-stone-100 dark:hover:bg-stone-800'
-            }`}
-          >
-            <CalendarIcon className="w-4 h-4" />
-            <span>Compromissos & Rotina ({appointments.length})</span>
-          </button>
-        </div>
-      </div>
-
-      {/* ======================= ABA DE CONTAS A PAGAR ======================= */}
-      {activeSubTab === 'bills' && (
-        <div className="space-y-4">
-          {/* Barra de Filtros */}
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-[#202020] border border-[#e9e9e8] dark:border-[#2d2d2d] rounded-xl p-3 shadow-sm">
-            {/* Filtro por Status */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-              <button
-                onClick={() => setBillFilter('all')}
-                className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
-                  billFilter === 'all'
-                    ? 'bg-stone-900 text-white dark:bg-white dark:text-stone-900'
-                    : 'bg-stone-100 dark:bg-stone-800 text-[#787774] dark:text-[#9b9a97] hover:bg-stone-200'
-                }`}
-              >
-                Todas ({bills.length})
-              </button>
-              <button
-                onClick={() => setBillFilter('pending')}
-                className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
-                  billFilter === 'pending'
-                    ? 'bg-amber-600 text-white'
-                    : 'bg-stone-100 dark:bg-stone-800 text-[#787774] dark:text-[#9b9a97] hover:bg-stone-200'
-                }`}
-              >
-                Pendentes ({metrics.pendingCount})
-              </button>
-              <button
-                onClick={() => setBillFilter('overdue')}
-                className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
-                  billFilter === 'overdue'
-                    ? 'bg-red-600 text-white'
-                    : 'bg-stone-100 dark:bg-stone-800 text-[#787774] dark:text-[#9b9a97] hover:bg-stone-200'
-                }`}
-              >
-                Atrasadas ({metrics.overdueCount})
-              </button>
-              <button
-                onClick={() => setBillFilter('paid')}
-                className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
-                  billFilter === 'paid'
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-stone-100 dark:bg-stone-800 text-[#787774] dark:text-[#9b9a97] hover:bg-stone-200'
-                }`}
-              >
-                Pagas ({bills.length - metrics.pendingCount})
-              </button>
-            </div>
-
-            {/* Filtro por Categoria */}
-            <div className="flex items-center gap-2 text-xs">
-              <Filter className="w-3.5 h-3.5 text-[#787774]" />
-              <select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                className="bg-stone-50 dark:bg-[#191919] border border-[#e9e9e8] dark:border-[#333] rounded-lg px-2.5 py-1.5 text-xs text-[#37352f] dark:text-stone-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              >
-                <option value="all">Todas as Categorias</option>
-                {Object.entries(CATEGORY_CONFIG).map(([key, config]) => (
-                  <option key={key} value={key}>
-                    {config.label}
-                  </option>
-                ))}
-              </select>
+        {/* Ícone de Nuvem / Cloud Badge (sobrepondo a borda como no Notion) */}
+        <div className="px-6 md:px-8 pb-5 pt-0 relative">
+          <div className="-mt-7 mb-3 inline-block">
+            <div className="w-14 h-14 rounded-2xl bg-white dark:bg-[#202020] border-2 border-white dark:border-[#202020] shadow-md flex items-center justify-center text-blue-600 dark:text-blue-400">
+              <Cloud className="w-8 h-8 fill-blue-500/20" />
             </div>
           </div>
 
-          {/* Lista de Contas */}
-          {filteredBills.length === 0 ? (
-            <div className="bg-white dark:bg-[#202020] border border-[#e9e9e8] dark:border-[#2d2d2d] rounded-2xl p-12 text-center shadow-sm">
-              <div className="w-12 h-12 rounded-2xl bg-stone-100 dark:bg-stone-800 flex items-center justify-center mx-auto mb-3 text-2xl">
-                💳
-              </div>
-              <h3 className="text-base font-bold text-[#37352f] dark:text-white mb-1">
-                Nenhuma conta encontrada
-              </h3>
-              <p className="text-sm text-[#787774] dark:text-[#9b9a97] max-w-sm mx-auto mb-4">
-                Não há contas com os filtros selecionados. Clique no botão abaixo para adicionar sua primeira conta!
+          {/* Título Principal */}
+          <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-[#ecebe8] dark:border-[#2f2f2f] pb-4">
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold text-[#37352f] dark:text-[#f3f3f2] tracking-tight">
+                Bullet Journal (Vida Pessoal & Finanças)
+              </h1>
+              <p className="text-xs md:text-sm text-[#787774] dark:text-[#9b9a97] mt-0.5">
+                Controle diário de rotina, contas a pagar, compromissos e metas no estilo minimalista.
               </p>
+            </div>
+
+            {/* Ações rápidas de criação */}
+            <div className="flex items-center gap-2 pt-2 sm:pt-0">
+              <button
+                onClick={handleOpenAddAppointment}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-xs font-semibold text-[#37352f] dark:text-stone-200 transition-colors"
+              >
+                <CalendarIcon className="w-3.5 h-3.5" />
+                <span>+ Compromisso</span>
+              </button>
               <button
                 onClick={handleOpenAddBill}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-xs font-semibold text-white transition-colors shadow-xs"
               >
-                <Plus className="w-4 h-4" />
-                <span>Adicionar Nova Conta</span>
+                <CreditCard className="w-3.5 h-3.5" />
+                <span>+ Conta a Pagar</span>
               </button>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-              {filteredBills.map((bill) => {
-                const cat = CATEGORY_CONFIG[bill.category] || CATEGORY_CONFIG.outros;
-                const CatIcon = cat.icon;
-                const dueStatus = getDueStatus(bill.dueDate, bill.status);
-                const isPaid = bill.status === 'paid';
+          </div>
+
+          {/* Toggle Notion: ▶ How to get started */}
+          <div className="pt-3">
+            <button
+              onClick={() => setIsGuideOpen(!isGuideOpen)}
+              className="flex items-center gap-1.5 text-xs text-[#787774] dark:text-[#9b9a97] hover:text-[#37352f] dark:hover:text-white transition-colors select-none font-medium"
+            >
+              <span className="text-[10px] transform transition-transform duration-150">
+                {isGuideOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+              </span>
+              <span>Legenda do Bullet Journal & Dicas de Uso</span>
+            </button>
+
+            {isGuideOpen && (
+              <div className="mt-2.5 p-3.5 rounded-xl bg-stone-50 dark:bg-[#1a1a1a] border border-[#e9e9e8] dark:border-[#2f2f2f] text-xs text-[#5a5855] dark:text-[#a8a7a4] space-y-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px]">
+                  <div className="flex items-center gap-1.5">
+                    <span className="px-1.5 py-0.5 rounded bg-white dark:bg-stone-800 border">□</span>
+                    <span>Tarefa pessoal</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="px-1.5 py-0.5 rounded bg-white dark:bg-stone-800 border">💳</span>
+                    <span>Conta a Pagar</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="px-1.5 py-0.5 rounded bg-white dark:bg-stone-800 border">○</span>
+                    <span>Compromisso / Médico</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="px-1.5 py-0.5 rounded bg-white dark:bg-stone-800 border">✓</span>
+                    <span>Concluído / Pago</span>
+                  </div>
+                </div>
+                <p className="text-[11px] text-[#787774] dark:text-[#9b9a97]">
+                  💡 Clique nos botões de símbolo no topo da coluna para filtrar ou registrar rapidamente novos itens. Suas alterações sincronizam automaticamente com a nuvem e com seu Google Calendar.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ======================================================== */}
+      {/* LAYOUT 2 COLUNAS (EXATAMENTE COMO NO MODELO DO PRINT)    */}
+      {/* ======================================================== */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        {/* ====================================================== */}
+        {/* COLUNA ESQUERDA: BULLET JOURNAL (DAILY LOG) (7 COLS)   */}
+        {/* ====================================================== */}
+        <div className="lg:col-span-7 bg-white dark:bg-[#202020] border border-[#e9e9e8] dark:border-[#2d2d2d] rounded-2xl p-5 shadow-xs space-y-4">
+          {/* Card Header com Ícone de Nuvem */}
+          <div className="flex items-center gap-2 text-xs font-semibold text-[#787774] dark:text-[#9b9a97]">
+            <Cloud className="w-4 h-4 text-stone-400" />
+            <span className="tracking-wide">Bullet Journal</span>
+          </div>
+
+          {/* Barra de 6 Símbolos / Atalhos (igual ao print) */}
+          <div className="grid grid-cols-6 gap-2">
+            <button
+              onClick={() => {
+                setQuickTypeLeft('appointment');
+                setLeftView('all');
+              }}
+              title="Tarefa Pessoal (□)"
+              className="py-2.5 rounded-xl border border-[#ecebe8] dark:border-[#2f2f2f] hover:bg-stone-50 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-300 font-mono text-sm flex items-center justify-center transition-colors"
+            >
+              □
+            </button>
+            <button
+              onClick={() => {
+                setQuickTypeLeft('appointment');
+                setLeftView('appointments');
+              }}
+              title="Compromisso / Evento (○)"
+              className="py-2.5 rounded-xl border border-[#ecebe8] dark:border-[#2f2f2f] hover:bg-stone-50 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-300 font-mono text-sm flex items-center justify-center transition-colors"
+            >
+              ○
+            </button>
+            <button
+              onClick={() => setLeftView('all')}
+              title="Nota / Anotação (—)"
+              className="py-2.5 rounded-xl border border-[#ecebe8] dark:border-[#2f2f2f] hover:bg-stone-50 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-300 font-mono text-sm flex items-center justify-center transition-colors"
+            >
+              —
+            </button>
+            <button
+              onClick={handleOpenAddBill}
+              title="Nova Conta a Pagar (+)"
+              className="py-2.5 rounded-xl border border-[#ecebe8] dark:border-[#2f2f2f] hover:bg-stone-50 dark:hover:bg-stone-800 text-emerald-600 dark:text-emerald-400 font-mono text-sm font-bold flex items-center justify-center transition-colors"
+            >
+              +
+            </button>
+            <button
+              onClick={() => setLeftView('bills')}
+              title="Contas a Pagar (*)"
+              className="py-2.5 rounded-xl border border-[#ecebe8] dark:border-[#2f2f2f] hover:bg-stone-50 dark:hover:bg-stone-800 text-amber-600 dark:text-amber-400 font-mono text-sm flex items-center justify-center transition-colors"
+            >
+              *
+            </button>
+            <button
+              onClick={() => setIsImportModalOpen(true)}
+              title="Sincronizar Google Calendar (△)"
+              className="py-2.5 rounded-xl border border-[#ecebe8] dark:border-[#2f2f2f] hover:bg-stone-50 dark:hover:bg-stone-800 text-purple-600 dark:text-purple-400 font-mono text-sm flex items-center justify-center transition-colors"
+            >
+              △
+            </button>
+          </div>
+
+          {/* Sub-Abas: 📅 Daily Log | 📅 Monthly Log | 📅 Future Log */}
+          <div className="flex items-center gap-1 border-b border-[#ecebe8] dark:border-[#2f2f2f] pb-2 text-xs overflow-x-auto">
+            <button
+              onClick={() => setLeftView('daily')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 ${
+                leftView === 'daily'
+                  ? 'border-b-2 border-stone-900 dark:border-white text-[#37352f] dark:text-white font-semibold'
+                  : 'text-[#787774] dark:text-[#9b9a97] hover:text-[#37352f]'
+              }`}
+            >
+              <CalendarIcon className="w-3.5 h-3.5" />
+              <span>Daily Log</span>
+            </button>
+
+            <button
+              onClick={() => setLeftView('bills')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 ${
+                leftView === 'bills'
+                  ? 'border-b-2 border-emerald-600 text-emerald-600 dark:text-emerald-400 font-semibold'
+                  : 'text-[#787774] dark:text-[#9b9a97] hover:text-[#37352f]'
+              }`}
+            >
+              <CreditCard className="w-3.5 h-3.5" />
+              <span>Contas a Pagar ({bills.length})</span>
+            </button>
+
+            <button
+              onClick={() => setLeftView('appointments')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 ${
+                leftView === 'appointments'
+                  ? 'border-b-2 border-blue-600 text-blue-600 dark:text-blue-400 font-semibold'
+                  : 'text-[#787774] dark:text-[#9b9a97] hover:text-[#37352f]'
+              }`}
+            >
+              <CalendarIcon className="w-3.5 h-3.5" />
+              <span>Compromissos ({appointments.length})</span>
+            </button>
+
+            <button
+              onClick={() => setLeftView('all')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 ${
+                leftView === 'all'
+                  ? 'border-b-2 border-purple-600 text-purple-600 dark:text-purple-400 font-semibold'
+                  : 'text-[#787774] dark:text-[#9b9a97] hover:text-[#37352f]'
+              }`}
+            >
+              <span>Ver Todos</span>
+            </button>
+          </div>
+
+          {/* Timeline agrupada por data (estilo Notion do print) */}
+          <div className="space-y-4 pt-1">
+            {Object.keys(groupedDailyLog).length === 0 ? (
+              <div className="py-10 text-center text-xs text-[#787774] dark:text-[#9b9a97]">
+                Nenhum registro para visualização no momento.
+              </div>
+            ) : (
+              Object.entries(groupedDailyLog).map(([dateKey, items]) => {
+                const isToday = dateKey === todayStr;
 
                 return (
-                  <div
-                    key={bill.id}
-                    className={`group relative bg-white dark:bg-[#202020] border rounded-2xl p-4 transition-all duration-200 shadow-sm hover:shadow-md flex flex-col justify-between ${
-                      isPaid
-                        ? 'border-[#e9e9e8] dark:border-[#2d2d2d] opacity-75'
-                        : bill.dueDate < todayStr
-                        ? 'border-red-300 dark:border-red-800/80 bg-red-50/20'
-                        : 'border-[#e9e9e8] dark:border-[#2d2d2d]'
-                    }`}
-                  >
-                    <div>
-                      {/* Topo do Card: Categoria & Status */}
-                      <div className="flex items-center justify-between gap-2 mb-2.5">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border ${cat.bg} ${cat.darkBg}`}
-                        >
-                          <CatIcon className="w-3 h-3" />
-                          <span>{cat.label}</span>
+                  <div key={dateKey} className="space-y-2">
+                    {/* Header da Data: ▼ 03.09 . S  1 */}
+                    <div className="flex items-center justify-between text-xs font-mono font-semibold text-[#787774] dark:text-[#9b9a97] select-none pt-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px]">▼</span>
+                        <span className={isToday ? 'text-blue-600 dark:text-blue-400 font-bold' : ''}>
+                          {formatDateHeader(dateKey)}
                         </span>
-
-                        <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border ${dueStatus.color}`}
-                        >
-                          <Clock className="w-2.5 h-2.5" />
-                          <span>{dueStatus.label}</span>
-                        </span>
+                        {isToday && (
+                          <span className="text-[10px] font-sans px-1.5 py-0.2 rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-normal">
+                            hoje
+                          </span>
+                        )}
                       </div>
+                      <span className="text-[10px] text-stone-400">{items.length}</span>
+                    </div>
 
-                      {/* Título e Valor */}
-                      <div className="mb-2">
-                        <h4
-                          className={`font-semibold text-base mb-1 ${
+                    {/* Linhas de Itens dessa Data */}
+                    <div className="space-y-1.5 pl-3 border-l-2 border-[#ecebe8] dark:border-[#2f2f2f]">
+                      {items.map((item) => {
+                        const isBill = item.type === 'bill';
+                        const isDone = item.completed;
+
+                        return (
+                          <div
+                            key={item.id}
+                            className={`group flex items-center justify-between gap-2 p-2 rounded-xl text-xs hover:bg-stone-50 dark:hover:bg-[#252525] transition-colors ${
+                              isDone ? 'opacity-60' : ''
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                              {/* Símbolo / Ícone */}
+                              <span className="text-stone-500 font-mono shrink-0">
+                                {isBill ? '💳' : '○'}
+                              </span>
+
+                              {/* Título */}
+                              <span
+                                className={`truncate font-medium ${
+                                  isDone
+                                    ? 'line-through text-[#787774] dark:text-[#9b9a97]'
+                                    : 'text-[#37352f] dark:text-[#ececed]'
+                                }`}
+                              >
+                                {item.title}
+                              </span>
+
+                              {/* Valor ou Hora */}
+                              {isBill && typeof item.amount === 'number' && item.amount > 0 && (
+                                <span className="shrink-0 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
+                                  {formatBRL(item.amount)}
+                                </span>
+                              )}
+
+                              {item.time && (
+                                <span className="shrink-0 text-[10px] text-stone-400 font-mono">
+                                  {item.time}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Checkbox estilo Notion na direita */}
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                onClick={() => handleToggleEntry(item)}
+                                title={isDone ? 'Reabrir' : 'Concluir'}
+                                className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                                  isDone
+                                    ? 'bg-blue-600 border-blue-600 text-white'
+                                    : 'border-stone-300 dark:border-stone-600 hover:border-blue-500'
+                                }`}
+                              >
+                                {isDone && <Check className="w-3 h-3 stroke-[3]" />}
+                              </button>
+
+                              <button
+                                onClick={() => {
+                                  if (isBill) handleOpenEditBill(item.raw as PersonalBill);
+                                  else handleOpenEditAppointment(item.raw as PersonalAppointment);
+                                }}
+                                title="Editar"
+                                className="opacity-0 group-hover:opacity-100 p-1 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 transition-opacity"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+
+                              <button
+                                onClick={() => handleDeleteEntry(item)}
+                                title="Excluir"
+                                className="opacity-0 group-hover:opacity-100 p-1 text-stone-400 hover:text-red-600 transition-opacity"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Quick inline entry no rodapé do Bullet Journal */}
+          <form
+            onSubmit={handleQuickAddLeft}
+            className="pt-3 border-t border-[#ecebe8] dark:border-[#2f2f2f] flex items-center gap-2"
+          >
+            <select
+              value={quickTypeLeft}
+              onChange={(e) => setQuickTypeLeft(e.target.value as any)}
+              className="text-xs bg-stone-100 dark:bg-stone-800 text-[#787774] dark:text-stone-300 rounded-lg px-2 py-1.5 border-0 focus:ring-1 focus:ring-stone-400"
+            >
+              <option value="bill">💳 Conta</option>
+              <option value="appointment">○ Compromisso</option>
+            </select>
+            <input
+              type="text"
+              placeholder="+ Novo registro no diário pessoal..."
+              value={quickInputLeft}
+              onChange={(e) => setQuickInputLeft(e.target.value)}
+              className="flex-1 text-xs px-3 py-1.5 rounded-lg border border-[#ecebe8] dark:border-[#2f2f2f] bg-stone-50 dark:bg-[#1a1a1a] text-[#37352f] dark:text-white focus:outline-none focus:ring-1 focus:ring-stone-400"
+            />
+          </form>
+        </div>
+
+        {/* ====================================================== */}
+        {/* COLUNA DIREITA: TASK & MONTHLY GOALS (5 COLS)          */}
+        {/* ====================================================== */}
+        <div className="lg:col-span-5 space-y-5">
+          {/* CARD 1: Task (Today) (igual ao print) */}
+          <div className="bg-white dark:bg-[#202020] border border-[#e9e9e8] dark:border-[#2d2d2d] rounded-2xl p-5 shadow-xs space-y-3">
+            <div className="flex items-center gap-2 text-xs font-semibold text-[#787774] dark:text-[#9b9a97]">
+              <Cloud className="w-4 h-4 text-stone-400" />
+              <span className="tracking-wide">Task</span>
+            </div>
+
+            {/* Tab: ⊞ Today | ⚠️ Pendentes */}
+            <div className="flex items-center gap-2 border-b border-[#ecebe8] dark:border-[#2f2f2f] pb-2 text-xs">
+              <button
+                onClick={() => setRightTaskView('today')}
+                className={`flex items-center gap-1.5 font-medium transition-colors ${
+                  rightTaskView === 'today'
+                    ? 'text-stone-900 dark:text-white font-semibold'
+                    : 'text-[#787774] dark:text-[#9b9a97]'
+                }`}
+              >
+                <span>⊞ Today</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-stone-100 dark:bg-stone-800">
+                  {todayTasks.length}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setRightTaskView('pending')}
+                className={`flex items-center gap-1.5 font-medium transition-colors ${
+                  rightTaskView === 'pending'
+                    ? 'text-stone-900 dark:text-white font-semibold'
+                    : 'text-[#787774] dark:text-[#9b9a97]'
+                }`}
+              >
+                <span>Todas Pendentes</span>
+              </button>
+            </div>
+
+            {/* Cabeçalho de Colunas: ✓ Aa Name | → | ✕ */}
+            <div className="flex items-center justify-between text-[11px] font-mono text-[#9b9a97] dark:text-[#787774] px-2">
+              <span className="flex items-center gap-1">✓ Aa Name</span>
+              <div className="flex items-center gap-3">
+                <span>→</span>
+                <span>✕</span>
+              </div>
+            </div>
+
+            {/* Lista de Tarefas de Hoje */}
+            <div className="space-y-1">
+              {todayTasks.length === 0 ? (
+                <div className="py-6 text-center text-xs text-[#787774] dark:text-[#9b9a97]">
+                  Tudo em dia para hoje! 🎉
+                </div>
+              ) : (
+                todayTasks.map((t) => (
+                  <div
+                    key={t.id}
+                    className="flex items-center justify-between p-2 rounded-xl text-xs hover:bg-stone-50 dark:hover:bg-[#252525] transition-colors"
+                  >
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <button
+                        onClick={() => handleToggleEntry(t as any)}
+                        className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center shrink-0 ${
+                          t.completed
+                            ? 'bg-blue-600 border-blue-600 text-white'
+                            : 'border-stone-400 dark:border-stone-600'
+                        }`}
+                      >
+                        {t.completed && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                      </button>
+                      <span
+                        className={`truncate ${
+                          t.completed
+                            ? 'line-through text-[#787774] dark:text-[#9b9a97]'
+                            : 'text-[#37352f] dark:text-white font-medium'
+                        }`}
+                      >
+                        {t.type === 'bill' ? `* ${t.title}` : t.title}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {t.amount !== undefined && t.amount > 0 && (
+                        <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
+                          {formatBRL(t.amount)}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => handleDeleteEntry(t as any)}
+                        className="text-stone-400 hover:text-red-600 p-0.5"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Quick add de tarefa */}
+            <form onSubmit={handleQuickAddRight} className="pt-2">
+              <input
+                type="text"
+                placeholder="+ Adicionar tarefa de hoje..."
+                value={quickInputRight}
+                onChange={(e) => setQuickInputRight(e.target.value)}
+                className="w-full text-xs px-3 py-1.5 rounded-lg border border-[#ecebe8] dark:border-[#2f2f2f] bg-stone-50 dark:bg-[#1a1a1a] text-[#37352f] dark:text-white focus:outline-none focus:ring-1 focus:ring-stone-400"
+              />
+            </form>
+          </div>
+
+          {/* CARD 2: Monthly Task & Goals / Finanças do Mês (igual ao print) */}
+          <div className="bg-white dark:bg-[#202020] border border-[#e9e9e8] dark:border-[#2d2d2d] rounded-2xl p-5 shadow-xs space-y-3">
+            <div className="flex items-center gap-2 text-xs font-semibold text-[#787774] dark:text-[#9b9a97]">
+              <Cloud className="w-4 h-4 text-stone-400" />
+              <span className="tracking-wide">Monthly Task & Goals</span>
+            </div>
+
+            {/* Tabs: ⊞ Monthly | ⊞ All */}
+            <div className="flex items-center gap-3 border-b border-[#ecebe8] dark:border-[#2f2f2f] pb-2 text-xs">
+              <button
+                onClick={() => setMonthlyView('monthly')}
+                className={`font-medium transition-colors ${
+                  monthlyView === 'monthly'
+                    ? 'text-stone-900 dark:text-white font-semibold'
+                    : 'text-[#787774] dark:text-[#9b9a97]'
+                }`}
+              >
+                ⊞ Monthly
+              </button>
+              <button
+                onClick={() => setMonthlyView('all')}
+                className={`font-medium transition-colors ${
+                  monthlyView === 'all'
+                    ? 'text-stone-900 dark:text-white font-semibold'
+                    : 'text-[#787774] dark:text-[#9b9a97]'
+                }`}
+              >
+                ⊞ All
+              </button>
+            </div>
+
+            {/* Grupo: ▼ Nov 2026  6 */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs font-mono font-semibold text-[#787774] dark:text-[#9b9a97] pt-1 select-none">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px]">▼</span>
+                  <span>Nov 2026</span>
+                </div>
+                <span className="text-[10px] text-stone-400">{bills.length}</span>
+              </div>
+
+              {/* Linhas de Contas do Mês com Checkboxes */}
+              <div className="space-y-1.5">
+                {bills.map((bill) => {
+                  const isPaid = bill.status === 'paid';
+
+                  return (
+                    <div
+                      key={bill.id}
+                      className="group flex items-center justify-between p-2 rounded-xl text-xs hover:bg-stone-50 dark:hover:bg-[#252525] transition-colors"
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <button
+                          onClick={() => {
+                            const isNowPaid = bill.status === 'pending';
+                            onUpdateBill({
+                              ...bill,
+                              status: isNowPaid ? 'paid' : 'pending',
+                              paidAt: isNowPaid ? todayStr : undefined,
+                            });
+                          }}
+                          className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center shrink-0 ${
+                            isPaid
+                              ? 'bg-blue-600 border-blue-600 text-white'
+                              : 'border-stone-400 dark:border-stone-600'
+                          }`}
+                        >
+                          {isPaid && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                        </button>
+
+                        <span
+                          className={`truncate font-medium ${
                             isPaid
                               ? 'line-through text-[#787774] dark:text-[#9b9a97]'
                               : 'text-[#37352f] dark:text-white'
                           }`}
                         >
-                          {bill.title}
-                        </h4>
-                        <div className="flex items-baseline gap-1.5">
-                          <span className="text-xs text-[#787774] dark:text-[#9b9a97]">Valor:</span>
-                          <span
-                            className={`text-lg font-bold ${
-                              isPaid
-                                ? 'text-stone-500'
-                                : 'text-emerald-600 dark:text-emerald-400'
-                            }`}
-                          >
-                            {formatBRL(bill.amount)}
-                          </span>
-                        </div>
+                          → {bill.title}
+                        </span>
                       </div>
 
-                      {/* Observações / Notas */}
-                      {bill.notes && (
-                        <p className="text-xs text-[#787774] dark:text-[#9b9a97] bg-stone-50 dark:bg-stone-800/60 p-2 rounded-lg mb-2">
-                          {bill.notes}
-                        </p>
-                      )}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span
+                          className={`font-mono text-[11px] font-semibold ${
+                            isPaid
+                              ? 'text-stone-400'
+                              : 'text-emerald-600 dark:text-emerald-400'
+                          }`}
+                        >
+                          {formatBRL(bill.amount)}
+                        </span>
 
-                      {/* Código de Barras / PIX */}
-                      {bill.barcodeOrLink && (
-                        <div className="flex items-center justify-between gap-1 bg-stone-100 dark:bg-stone-800/80 px-2.5 py-1.5 rounded-lg text-xs font-mono text-[#787774] dark:text-stone-300 mb-2">
-                          <span className="truncate max-w-[200px]">{bill.barcodeOrLink}</span>
+                        {bill.barcodeOrLink && (
                           <button
                             onClick={() => handleCopyBarcode(bill.id, bill.barcodeOrLink!)}
-                            title="Copiar Código"
-                            className="p-1 hover:text-emerald-600 text-stone-500 shrink-0"
+                            title="Copiar Código de Barras / PIX"
+                            className="p-1 text-stone-400 hover:text-emerald-600"
                           >
                             {copiedId === bill.id ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                              <Check className="w-3 h-3 text-emerald-600" />
                             ) : (
-                              <Copy className="w-3.5 h-3.5" />
+                              <Copy className="w-3 h-3" />
                             )}
                           </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Rodapé: Ações e Botão Pago */}
-                    <div className="pt-3 border-t border-[#f0efec] dark:border-[#2d2d2d] flex items-center justify-between gap-2 mt-2">
-                      <button
-                        onClick={() => handleToggleBillStatus(bill)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                          isPaid
-                            ? 'bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 text-stone-600 dark:text-stone-300'
-                            : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
-                        }`}
-                      >
-                        {isPaid ? (
-                          <>
-                            <RotateCcw className="w-3.5 h-3.5" />
-                            <span>Desmarcar Pago</span>
-                          </>
-                        ) : (
-                          <>
-                            <Check className="w-3.5 h-3.5" />
-                            <span>Marcar como Pago</span>
-                          </>
                         )}
-                      </button>
-
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleOpenEditBill(bill)}
-                          title="Editar Conta"
-                          className="p-1.5 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (window.confirm(`Excluir conta "${bill.title}"?`)) {
-                              onDeleteBill(bill.id);
-                            }
-                          }}
-                          title="Excluir Conta"
-                          className="p-1.5 text-stone-400 hover:text-red-600 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ======================= ABA DE COMPROMISSOS & ROTINA ======================= */}
-      {activeSubTab === 'appointments' && (
-        <div className="space-y-6">
-          {/* Seção Próximos Compromissos */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-[#37352f] dark:text-white flex items-center gap-2">
-                <span>🗓️</span> Próximos Compromissos & Saúde ({upcomingAppointments.length})
-              </h3>
-              <button
-                onClick={handleOpenAddAppointment}
-                className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                + Adicionar Compromisso
-              </button>
-            </div>
-
-            {upcomingAppointments.length === 0 ? (
-              <div className="bg-white dark:bg-[#202020] border border-[#e9e9e8] dark:border-[#2d2d2d] rounded-xl p-8 text-center text-sm text-[#787774] dark:text-[#9b9a97]">
-                Nenhum compromisso agendado para os próximos dias.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {upcomingAppointments.map((app) => {
-                  const cat = APPOINTMENT_CATEGORY_CONFIG[app.category] || APPOINTMENT_CATEGORY_CONFIG.outro;
-                  const isToday = app.date === todayStr;
-
-                  return (
-                    <div
-                      key={app.id}
-                      className={`bg-white dark:bg-[#202020] border rounded-xl p-4 shadow-sm hover:shadow-md transition-all flex items-start justify-between gap-3 ${
-                        isToday
-                          ? 'border-blue-400 dark:border-blue-700 bg-blue-50/20'
-                          : 'border-[#e9e9e8] dark:border-[#2d2d2d]'
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <button
-                          onClick={() => handleToggleAppointmentCompleted(app)}
-                          className="mt-0.5 w-5 h-5 rounded-md border-2 border-stone-300 dark:border-stone-600 hover:border-emerald-500 flex items-center justify-center transition-colors shrink-0"
-                        >
-                          {app.completed && <Check className="w-3.5 h-3.5 text-emerald-600" />}
-                        </button>
-
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-semibold text-sm text-[#37352f] dark:text-white">
-                              {app.title}
-                            </h4>
-                            <span
-                              className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${cat.badgeClass}`}
-                            >
-                              {cat.label}
-                            </span>
-                          </div>
-
-                          <div className="flex flex-wrap items-center gap-3 text-xs text-[#787774] dark:text-[#9b9a97]">
-                            <span className="flex items-center gap-1">
-                              <CalendarIcon className="w-3 h-3" />
-                              <span>{app.date.split('-').reverse().join('/')}</span>
-                            </span>
-                            {app.time && (
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                <span>{app.time}</span>
-                              </span>
-                            )}
-                            {app.location && (
-                              <span className="flex items-center gap-1">
-                                <MapPin className="w-3 h-3" />
-                                <span>{app.location}</span>
-                              </span>
-                            )}
-                          </div>
-
-                          {app.notes && (
-                            <p className="text-xs text-[#787774] dark:text-[#9b9a97] pt-1">
-                              {app.notes}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          onClick={() => handleOpenEditAppointment(app)}
-                          className="p-1 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => onDeleteAppointment(app.id)}
-                          className="p-1 text-stone-400 hover:text-red-600"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
                       </div>
                     </div>
                   );
                 })}
               </div>
-            )}
-          </div>
 
-          {/* Seção Concluídos */}
-          {completedAppointments.length > 0 && (
-            <div className="space-y-3 pt-4 border-t border-[#e9e9e8] dark:border-[#2d2d2d]">
-              <h3 className="text-xs font-bold text-[#787774] dark:text-[#9b9a97] uppercase tracking-wider">
-                Compromissos Concluídos ({completedAppointments.length})
-              </h3>
-              <div className="space-y-2">
-                {completedAppointments.map((app) => (
-                  <div
-                    key={app.id}
-                    className="flex items-center justify-between p-3 rounded-xl bg-stone-50 dark:bg-[#1c1c1c] text-xs text-[#787774] dark:text-[#9b9a97] opacity-75"
-                  >
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleToggleAppointmentCompleted(app)}
-                        className="w-4 h-4 rounded bg-emerald-600 text-white flex items-center justify-center"
-                      >
-                        <Check className="w-3 h-3" />
-                      </button>
-                      <span className="line-through font-medium text-[#37352f] dark:text-stone-300">
-                        {app.title}
-                      </span>
-                      <span>— {app.date.split('-').reverse().join('/')}</span>
-                    </div>
-                    <button
-                      onClick={() => onDeleteAppointment(app.id)}
-                      className="text-stone-400 hover:text-red-600 p-1"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
+              {/* Resumo Financeiro no Rodapé do Card */}
+              <div className="pt-3 border-t border-[#ecebe8] dark:border-[#2f2f2f] flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-[#787774] dark:text-[#9b9a97] block text-[10px] uppercase font-semibold">
+                    A Pagar Pendente:
+                  </span>
+                  <span className="font-bold text-amber-600 dark:text-amber-400">
+                    {formatBRL(pendingTotal)}
+                  </span>
+                </div>
+
+                <div className="text-right">
+                  <span className="text-[#787774] dark:text-[#9b9a97] block text-[10px] uppercase font-semibold">
+                    Total Já Pago:
+                  </span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                    {formatBRL(paidTotal)}
+                  </span>
+                </div>
               </div>
             </div>
-          )}
+          </div>
         </div>
-      )}
+      </div>
 
-      {/* ======================= MODAL NOVA/EDITAR CONTA ======================= */}
+      {/* ======================= MODAL CONTA A PAGAR ======================= */}
       {isBillModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white dark:bg-[#202020] border border-[#e9e9e8] dark:border-[#333] rounded-2xl p-6 w-full max-w-lg shadow-2xl space-y-4">
+          <div className="bg-white dark:bg-[#202020] border border-[#e9e9e8] dark:border-[#333] rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-[#f0efec] dark:border-[#2d2d2d]">
-              <h3 className="text-lg font-bold text-[#37352f] dark:text-white flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-emerald-600" />
-                <span>{editingBill ? 'Editar Conta a Pagar' : 'Nova Conta a Pagar'}</span>
+              <h3 className="text-base font-bold text-[#37352f] dark:text-white flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-emerald-600" />
+                <span>{editingBill ? 'Editar Conta' : 'Nova Conta a Pagar'}</span>
               </h3>
               <button
                 onClick={() => setIsBillModalOpen(false)}
-                className="text-stone-400 hover:text-stone-700 text-xl font-bold"
+                className="text-stone-400 hover:text-stone-700 text-lg font-bold"
               >
                 &times;
               </button>
             </div>
 
-            <form onSubmit={handleSaveBill} className="space-y-4 text-xs md:text-sm">
+            <form onSubmit={handleSaveBill} className="space-y-3.5 text-xs">
               <div>
-                <label className="block text-xs font-semibold text-[#787774] dark:text-[#9b9a97] mb-1">
-                  Nome da Conta / Despesa *
+                <label className="block font-semibold text-[#787774] dark:text-[#9b9a97] mb-1">
+                  Nome da Conta *
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="Ex: Pagar a Luz (Enel), Pagar Água, Pagar o Inglês"
+                  placeholder="Ex: Pagar a Luz, Pagar Água, Pagar o Inglês"
                   value={billTitle}
                   onChange={(e) => setBillTitle(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#191919] text-[#37352f] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full px-3 py-2 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#191919] text-[#37352f] dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-[#787774] dark:text-[#9b9a97] mb-1">
-                    Valor (R$) *
+                  <label className="block font-semibold text-[#787774] dark:text-[#9b9a97] mb-1">
+                    Valor (R$)
                   </label>
                   <input
                     type="text"
-                    required
                     placeholder="Ex: 164,20"
                     value={billAmount}
                     onChange={(e) => setBillAmount(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#191919] text-[#37352f] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full px-3 py-2 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#191919] text-[#37352f] dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#787774] dark:text-[#9b9a97] mb-1">
-                    Data de Vencimento *
+                  <label className="block font-semibold text-[#787774] dark:text-[#9b9a97] mb-1">
+                    Vencimento *
                   </label>
                   <input
                     type="date"
                     required
                     value={billDueDate}
                     onChange={(e) => setBillDueDate(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#191919] text-[#37352f] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full px-3 py-2 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#191919] text-[#37352f] dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-[#787774] dark:text-[#9b9a97] mb-1">
-                    Categoria
-                  </label>
-                  <select
-                    value={billCategory}
-                    onChange={(e) => setBillCategory(e.target.value as BillCategory)}
-                    className="w-full px-3 py-2 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#191919] text-[#37352f] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  >
-                    {Object.entries(CATEGORY_CONFIG).map(([k, c]) => (
-                      <option key={k} value={k}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-[#787774] dark:text-[#9b9a97] mb-1">
-                    Recorrência
-                  </label>
-                  <select
-                    value={billRecurring}
-                    onChange={(e) => setBillRecurring(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#191919] text-[#37352f] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  >
-                    <option value="monthly">Mensal (todo mês)</option>
-                    <option value="none">Única (avulsa)</option>
-                    <option value="yearly">Anual</option>
-                  </select>
-                </div>
-              </div>
-
               <div>
-                <label className="block text-xs font-semibold text-[#787774] dark:text-[#9b9a97] mb-1">
-                  Chave PIX ou Código de Barras (Opcional)
+                <label className="block font-semibold text-[#787774] dark:text-[#9b9a97] mb-1">
+                  PIX ou Código de Barras (Opcional)
                 </label>
                 <input
                   type="text"
-                  placeholder="Cole aqui a linha digitável ou chave PIX para copiar rápido"
+                  placeholder="Cole o código para copiar com 1 clique"
                   value={billBarcode}
                   onChange={(e) => setBillBarcode(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#191919] text-[#37352f] dark:text-white font-mono text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full px-3 py-2 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#191919] text-[#37352f] dark:text-white font-mono text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#787774] dark:text-[#9b9a97] mb-1">
-                  Observações / Lembretes
+                <label className="block font-semibold text-[#787774] dark:text-[#9b9a97] mb-1">
+                  Observações
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Ex: Pagar antes das 16h para compensar no mesmo dia."
+                  placeholder="Lembretes, detalhes de pagamento..."
                   value={billNotes}
                   onChange={(e) => setBillNotes(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#191919] text-[#37352f] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full px-3 py-2 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#191919] text-[#37352f] dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#f0efec] dark:border-[#2d2d2d]">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#f0efec] dark:border-[#2d2d2d]">
                 <button
                   type="button"
                   onClick={() => setIsBillModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+                  className="px-3.5 py-1.5 rounded-xl text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-colors shadow-sm"
+                  className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
                 >
-                  {editingBill ? 'Salvar Alterações' : 'Adicionar Conta'}
+                  Salvar Conta
                 </button>
               </div>
             </form>
@@ -1125,41 +1164,41 @@ export const PersonalLifeTab: React.FC<PersonalLifeTabProps> = ({
         </div>
       )}
 
-      {/* ======================= MODAL NOVO/EDITAR COMPROMISSO ======================= */}
-      {isAppointmentModalOpen && (
+      {/* ======================= MODAL COMPROMISSO ======================= */}
+      {isAppModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white dark:bg-[#202020] border border-[#e9e9e8] dark:border-[#333] rounded-2xl p-6 w-full max-w-lg shadow-2xl space-y-4">
+          <div className="bg-white dark:bg-[#202020] border border-[#e9e9e8] dark:border-[#333] rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-[#f0efec] dark:border-[#2d2d2d]">
-              <h3 className="text-lg font-bold text-[#37352f] dark:text-white flex items-center gap-2">
-                <CalendarIcon className="w-5 h-5 text-blue-600" />
-                <span>{editingAppointment ? 'Editar Compromisso' : 'Novo Compromisso Pessoal'}</span>
+              <h3 className="text-base font-bold text-[#37352f] dark:text-white flex items-center gap-2">
+                <CalendarIcon className="w-4 h-4 text-blue-600" />
+                <span>{editingApp ? 'Editar Compromisso' : 'Novo Compromisso'}</span>
               </h3>
               <button
-                onClick={() => setIsAppointmentModalOpen(false)}
-                className="text-stone-400 hover:text-stone-700 text-xl font-bold"
+                onClick={() => setIsAppModalOpen(false)}
+                className="text-stone-400 hover:text-stone-700 text-lg font-bold"
               >
                 &times;
               </button>
             </div>
 
-            <form onSubmit={handleSaveAppointment} className="space-y-4 text-xs md:text-sm">
+            <form onSubmit={handleSaveAppointment} className="space-y-3.5 text-xs">
               <div>
-                <label className="block text-xs font-semibold text-[#787774] dark:text-[#9b9a97] mb-1">
+                <label className="block font-semibold text-[#787774] dark:text-[#9b9a97] mb-1">
                   Título do Compromisso *
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="Ex: Marcar dentista, Consulta médica, Mercado do mês"
+                  placeholder="Ex: Marcar dentista, Consulta médica, Mercado"
                   value={appTitle}
                   onChange={(e) => setAppTitle(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#191919] text-[#37352f] dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#191919] text-[#37352f] dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-[#787774] dark:text-[#9b9a97] mb-1">
+                  <label className="block font-semibold text-[#787774] dark:text-[#9b9a97] mb-1">
                     Data *
                   </label>
                   <input
@@ -1167,81 +1206,62 @@ export const PersonalLifeTab: React.FC<PersonalLifeTabProps> = ({
                     required
                     value={appDate}
                     onChange={(e) => setAppDate(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#191919] text-[#37352f] dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#191919] text-[#37352f] dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#787774] dark:text-[#9b9a97] mb-1">
+                  <label className="block font-semibold text-[#787774] dark:text-[#9b9a97] mb-1">
                     Horário
                   </label>
                   <input
                     type="time"
                     value={appTime}
                     onChange={(e) => setAppTime(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#191919] text-[#37352f] dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-[#787774] dark:text-[#9b9a97] mb-1">
-                    Categoria
-                  </label>
-                  <select
-                    value={appCategory}
-                    onChange={(e) => setAppCategory(e.target.value as AppointmentCategory)}
-                    className="w-full px-3 py-2 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#191919] text-[#37352f] dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {Object.entries(APPOINTMENT_CATEGORY_CONFIG).map(([k, c]) => (
-                      <option key={k} value={k}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-[#787774] dark:text-[#9b9a97] mb-1">
-                    Localização (Opcional)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ex: Consultório Dr. Marcelo"
-                    value={appLocation}
-                    onChange={(e) => setAppLocation(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#191919] text-[#37352f] dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#191919] text-[#37352f] dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#787774] dark:text-[#9b9a97] mb-1">
+                <label className="block font-semibold text-[#787774] dark:text-[#9b9a97] mb-1">
+                  Localização (Opcional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Consultório Dr. Marcelo"
+                  value={appLocation}
+                  onChange={(e) => setAppLocation(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#191919] text-[#37352f] dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#787774] dark:text-[#9b9a97] mb-1">
                   Observações
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Ex: Levar carteirinha do convênio e exames anteriores."
+                  placeholder="Ex: Levar exames anteriores..."
                   value={appNotes}
                   onChange={(e) => setAppNotes(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#191919] text-[#37352f] dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#191919] text-[#37352f] dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#f0efec] dark:border-[#2d2d2d]">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#f0efec] dark:border-[#2d2d2d]">
                 <button
                   type="button"
-                  onClick={() => setIsAppointmentModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+                  onClick={() => setIsAppModalOpen(false)}
+                  className="px-3.5 py-1.5 rounded-xl text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-colors shadow-sm"
+                  className="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-xs"
                 >
-                  {editingAppointment ? 'Salvar Alterações' : 'Adicionar Compromisso'}
+                  Salvar
                 </button>
               </div>
             </form>
@@ -1252,47 +1272,59 @@ export const PersonalLifeTab: React.FC<PersonalLifeTabProps> = ({
       {/* ======================= MODAL IMPORTAR DA AGENDA ======================= */}
       {isImportModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white dark:bg-[#202020] border border-[#e9e9e8] dark:border-[#333] rounded-2xl p-6 w-full max-w-lg shadow-2xl space-y-4">
+          <div className="bg-white dark:bg-[#202020] border border-[#e9e9e8] dark:border-[#333] rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-[#f0efec] dark:border-[#2d2d2d]">
-              <h3 className="text-base font-bold text-[#37352f] dark:text-white flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-purple-600" />
-                <span>Contas Detectadas na sua Agenda do Google</span>
+              <h3 className="text-sm font-bold text-[#37352f] dark:text-white flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-purple-600" />
+                <span>Contas Detectadas na sua Google Agenda</span>
               </h3>
               <button
                 onClick={() => setIsImportModalOpen(false)}
-                className="text-stone-400 hover:text-stone-700 text-xl font-bold"
+                className="text-stone-400 hover:text-stone-700 text-lg font-bold"
               >
                 &times;
               </button>
             </div>
 
             <p className="text-xs text-[#787774] dark:text-[#9b9a97]">
-              Encontramos os seguintes lembretes financeiros na sua agenda. Clique em "Adicionar" para cadastrá-los na sua lista de Contas a Pagar:
+              Encontramos os seguintes lembretes financeiros na sua agenda:
             </p>
 
-            <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+            <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1 text-xs">
               {detectedCalendarBills.map((item, idx) => (
                 <div
                   key={idx}
-                  className="flex items-center justify-between p-3 rounded-xl bg-stone-50 dark:bg-stone-800/60 border border-[#e9e9e8] dark:border-[#333] text-xs"
+                  className="flex items-center justify-between p-2.5 rounded-xl bg-stone-50 dark:bg-stone-800/60 border border-[#e9e9e8] dark:border-[#333]"
                 >
                   <div>
                     <h5 className="font-semibold text-[#37352f] dark:text-white">
                       {item.summary}
                     </h5>
                     <span className="text-[11px] text-[#787774] dark:text-[#9b9a97]">
-                      Vencimento: {item.date.split('-').reverse().join('/')}
+                      {item.date.split('-').reverse().join('/')}
                     </span>
                   </div>
 
                   {item.existing ? (
-                    <span className="px-2 py-1 rounded-md text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
                       Já adicionado ✓
                     </span>
                   ) : (
                     <button
-                      onClick={() => handleImportCalendarEvent(item)}
-                      className="px-3 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-medium transition-colors"
+                      onClick={() => {
+                        const newBill: PersonalBill = {
+                          id: `bill-imported-${Date.now()}`,
+                          title: item.summary,
+                          amount: 0,
+                          dueDate: item.date,
+                          category: 'moradia',
+                          status: 'pending',
+                          recurring: 'monthly',
+                          notes: 'Importado da Google Agenda',
+                        };
+                        onAddBill(newBill);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-medium text-xs transition-colors"
                     >
                       Adicionar
                     </button>
@@ -1301,10 +1333,10 @@ export const PersonalLifeTab: React.FC<PersonalLifeTabProps> = ({
               ))}
             </div>
 
-            <div className="flex justify-end pt-3 border-t border-[#f0efec] dark:border-[#2d2d2d]">
+            <div className="flex justify-end pt-2 border-t border-[#f0efec] dark:border-[#2d2d2d]">
               <button
                 onClick={() => setIsImportModalOpen(false)}
-                className="px-4 py-2 rounded-xl bg-stone-900 text-white dark:bg-white dark:text-stone-900 text-xs font-semibold"
+                className="px-4 py-1.5 rounded-xl bg-stone-900 text-white dark:bg-white dark:text-stone-900 text-xs font-semibold"
               >
                 Concluir
               </button>
