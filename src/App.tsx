@@ -1,11 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { Course, Task, StudyTopic, StudySession, NotebookNote } from './types';
+import {
+  Course,
+  Task,
+  StudyTopic,
+  StudySession,
+  NotebookNote,
+  PersonalBill,
+  PersonalAppointment,
+} from './types';
 import {
   initialCourses,
   initialTasks,
   initialTopics,
   initialSessions,
   initialNotes,
+  initialPersonalBills,
+  initialPersonalAppointments,
 } from './mockData';
 import { Header } from './components/Header';
 import { CoursesTab } from './components/CoursesTab';
@@ -15,11 +25,22 @@ import { PomodoroTimerTab } from './components/PomodoroTimerTab';
 import { NotebookTab } from './components/NotebookTab';
 import { CalendarTab } from './components/CalendarTab';
 import { HomeTab } from './components/HomeTab';
+import { PersonalLifeTab } from './components/PersonalLifeTab';
 import { FirebaseModal } from './components/FirebaseModal';
 import { LoginScreen } from './components/LoginScreen';
 import { onUserChanged, saveToFirestore, subscribeToFirestore, logoutFirebase, isEmailAllowed } from './firebase';
+import { fetchGoogleCalendarEvents, GoogleCalendarEvent } from './googleCalendar';
 import { User } from 'firebase/auth';
-import { BookOpen, CheckSquare, Brain, Clock, FileText, Calendar, LayoutDashboard } from 'lucide-react';
+import {
+  BookOpen,
+  CheckSquare,
+  Brain,
+  Clock,
+  FileText,
+  Calendar,
+  LayoutDashboard,
+  Wallet,
+} from 'lucide-react';
 
 export const App: React.FC = () => {
   // Theme state
@@ -39,7 +60,7 @@ export const App: React.FC = () => {
 
   // Main navigation tab
   const [activeTab, setActiveTab] = useState<
-    'home' | 'courses' | 'tasks' | 'active_recall' | 'calendar' | 'timer' | 'notes'
+    'home' | 'courses' | 'tasks' | 'personal' | 'calendar' | 'active_recall' | 'timer' | 'notes'
   >('home');
 
   // Firebase auth & modal state
@@ -72,9 +93,16 @@ export const App: React.FC = () => {
   const [notes, setNotes] = useState<NotebookNote[]>(() =>
     loadState('study_notes', initialNotes)
   );
+  const [personalBills, setPersonalBills] = useState<PersonalBill[]>(() =>
+    loadState('study_personal_bills', initialPersonalBills)
+  );
+  const [personalAppointments, setPersonalAppointments] = useState<PersonalAppointment[]>(() =>
+    loadState('study_personal_appointments', initialPersonalAppointments)
+  );
   const [calendarId, setCalendarId] = useState<string>(() =>
     loadState('study_calendar_id', 'nicolasplcoelho@gmail.com')
   );
+  const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
 
   // Helper para salvar na nuvem de forma direta e sem conflitos
   const syncEntityToCloud = (key: string, data: any) => {
@@ -186,6 +214,63 @@ export const App: React.FC = () => {
     syncEntityToCloud('calendarId', newId);
   };
 
+  // Handlers para Vida Pessoal & Finanças (Contas a Pagar)
+  const handleAddBill = (newBill: PersonalBill) => {
+    const updated = [...personalBills, newBill];
+    setPersonalBills(updated);
+    localStorage.setItem('study_personal_bills', JSON.stringify(updated));
+    syncEntityToCloud('personalBills', updated);
+  };
+
+  const handleUpdateBill = (updatedBill: PersonalBill) => {
+    const updated = personalBills.map((b) => (b.id === updatedBill.id ? updatedBill : b));
+    setPersonalBills(updated);
+    localStorage.setItem('study_personal_bills', JSON.stringify(updated));
+    syncEntityToCloud('personalBills', updated);
+  };
+
+  const handleDeleteBill = (id: string) => {
+    const updated = personalBills.filter((b) => b.id !== id);
+    setPersonalBills(updated);
+    localStorage.setItem('study_personal_bills', JSON.stringify(updated));
+    syncEntityToCloud('personalBills', updated);
+  };
+
+  // Handlers para Compromissos Pessoais & Rotina
+  const handleAddAppointment = (newApp: PersonalAppointment) => {
+    const updated = [...personalAppointments, newApp];
+    setPersonalAppointments(updated);
+    localStorage.setItem('study_personal_appointments', JSON.stringify(updated));
+    syncEntityToCloud('personalAppointments', updated);
+  };
+
+  const handleUpdateAppointment = (updatedApp: PersonalAppointment) => {
+    const updated = personalAppointments.map((a) => (a.id === updatedApp.id ? updatedApp : a));
+    setPersonalAppointments(updated);
+    localStorage.setItem('study_personal_appointments', JSON.stringify(updated));
+    syncEntityToCloud('personalAppointments', updated);
+  };
+
+  const handleDeleteAppointment = (id: string) => {
+    const updated = personalAppointments.filter((a) => a.id !== id);
+    setPersonalAppointments(updated);
+    localStorage.setItem('study_personal_appointments', JSON.stringify(updated));
+    syncEntityToCloud('personalAppointments', updated);
+  };
+
+  // Carrega eventos da Google Agenda em segundo plano para detecção inteligente
+  useEffect(() => {
+    let isMounted = true;
+    fetchGoogleCalendarEvents(null, undefined, undefined, calendarId)
+      .then((evs) => {
+        if (isMounted && evs.length > 0) setGoogleEvents(evs);
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [calendarId]);
+
   // Listen to Firebase Auth state
   useEffect(() => {
     const unsub = onUserChanged((user) => {
@@ -225,6 +310,14 @@ export const App: React.FC = () => {
         setNotes(data.notes);
         localStorage.setItem('study_notes', JSON.stringify(data.notes));
       }
+      if (Array.isArray(data.personalBills)) {
+        setPersonalBills(data.personalBills);
+        localStorage.setItem('study_personal_bills', JSON.stringify(data.personalBills));
+      }
+      if (Array.isArray(data.personalAppointments)) {
+        setPersonalAppointments(data.personalAppointments);
+        localStorage.setItem('study_personal_appointments', JSON.stringify(data.personalAppointments));
+      }
       if (typeof data.calendarId === 'string') {
         setCalendarId(data.calendarId);
         localStorage.setItem('study_calendar_id', data.calendarId);
@@ -244,9 +337,23 @@ export const App: React.FC = () => {
     .filter((s) => s.date === todayStr)
     .reduce((acc, curr) => acc + curr.durationMinutes, 0);
 
+  const pendingBillsCount = personalBills.filter((b) => b.status === 'pending').length;
+  const overdueBillsCount = personalBills.filter(
+    (b) => b.status === 'pending' && b.dueDate < todayStr
+  ).length;
+
   // Backup & Restore
   const handleExportData = () => {
-    const data = { courses, tasks, topics, sessions, notes, version: 1 };
+    const data = {
+      courses,
+      tasks,
+      topics,
+      sessions,
+      notes,
+      personalBills,
+      personalAppointments,
+      version: 2,
+    };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -287,6 +394,16 @@ export const App: React.FC = () => {
           localStorage.setItem('study_notes', JSON.stringify(parsed.notes));
           syncEntityToCloud('notes', parsed.notes);
         }
+        if (Array.isArray(parsed.personalBills)) {
+          setPersonalBills(parsed.personalBills);
+          localStorage.setItem('study_personal_bills', JSON.stringify(parsed.personalBills));
+          syncEntityToCloud('personalBills', parsed.personalBills);
+        }
+        if (Array.isArray(parsed.personalAppointments)) {
+          setPersonalAppointments(parsed.personalAppointments);
+          localStorage.setItem('study_personal_appointments', JSON.stringify(parsed.personalAppointments));
+          syncEntityToCloud('personalAppointments', parsed.personalAppointments);
+        }
         alert('✅ Dados restaurados e sincronizados com sucesso!');
       } catch {
         alert('❌ Erro ao ler arquivo de backup.');
@@ -315,6 +432,13 @@ export const App: React.FC = () => {
       label: 'Quadro de Tarefas',
       icon: CheckSquare,
       count: pendingTasksCount,
+    },
+    {
+      id: 'personal',
+      label: 'Vida Pessoal & Finanças',
+      icon: Wallet,
+      count: overdueBillsCount > 0 ? overdueBillsCount : (pendingBillsCount > 0 ? pendingBillsCount : undefined),
+      highlight: overdueBillsCount > 0,
     },
     {
       id: 'calendar',
@@ -425,6 +549,8 @@ export const App: React.FC = () => {
             tasks={tasks}
             darkMode={darkMode}
             calendarId={calendarId}
+            personalBills={personalBills}
+            personalAppointments={personalAppointments}
             onAddTask={handleAddTask}
             onUpdateTask={handleUpdateTask}
             onDeleteTask={handleDeleteTask}
@@ -449,6 +575,21 @@ export const App: React.FC = () => {
             onAddTask={handleAddTask}
             onUpdateTask={handleUpdateTask}
             onDeleteTask={handleDeleteTask}
+          />
+        )}
+
+        {activeTab === 'personal' && (
+          <PersonalLifeTab
+            bills={personalBills}
+            appointments={personalAppointments}
+            googleEvents={googleEvents}
+            darkMode={darkMode}
+            onAddBill={handleAddBill}
+            onUpdateBill={handleUpdateBill}
+            onDeleteBill={handleDeleteBill}
+            onAddAppointment={handleAddAppointment}
+            onUpdateAppointment={handleUpdateAppointment}
+            onDeleteAppointment={handleDeleteAppointment}
           />
         )}
 
@@ -494,7 +635,15 @@ export const App: React.FC = () => {
       <FirebaseModal
         isOpen={isFirebaseModalOpen}
         onClose={() => setIsFirebaseModalOpen(false)}
-        dashboardData={{ courses, tasks, topics, sessions, notes }}
+        dashboardData={{
+          courses,
+          tasks,
+          topics,
+          sessions,
+          notes,
+          personalBills,
+          personalAppointments,
+        }}
       />
     </div>
   );

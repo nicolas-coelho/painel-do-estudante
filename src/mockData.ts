@@ -1,4 +1,12 @@
-import { Course, Task, StudyTopic, StudySession, NotebookNote } from './types';
+import {
+  Course,
+  Task,
+  StudyTopic,
+  StudySession,
+  NotebookNote,
+  PersonalBill,
+  PersonalAppointment,
+} from './types';
 
 export const initialCourses: Course[] = [
   {
@@ -250,5 +258,113 @@ export const initialNotes: NotebookNote[] = [
     tags: ['MC322', 'Java', 'Material'],
     createdAt: '2026-10-28',
     content: 'Repositório da disciplina: github.com/santanche/mc322\nDocumentação Java SE 21.\nExercícios no LeetCode e BeeCrowd.',
+  },
+];
+
+export const initialPersonalBills: PersonalBill[] = [
+  {
+    id: 'bill-1',
+    title: 'Pagar Água',
+    amount: 78.5,
+    dueDate: '2026-11-01',
+    category: 'moradia',
+    status: 'paid',
+    paidAt: '2026-11-01',
+    recurring: 'monthly',
+    notes: 'Débito automático ou PIX',
+  },
+  {
+    id: 'bill-2',
+    title: 'Enviar boleto da faculdade',
+    amount: 0.0,
+    dueDate: '2026-11-06',
+    category: 'educacao',
+    status: 'paid',
+    paidAt: '2026-11-06',
+    recurring: 'monthly',
+    notes: 'Comprovante enviado para a secretaria',
+  },
+  {
+    id: 'bill-3',
+    title: 'Pagar Conta Internet',
+    amount: 119.9,
+    dueDate: '2026-11-08',
+    category: 'servicos',
+    status: 'pending',
+    recurring: 'monthly',
+    notes: 'Fibra óptica 500MB',
+  },
+  {
+    id: 'bill-4',
+    title: 'Pagar Desktop / Manutenção',
+    amount: 150.0,
+    dueDate: '2026-11-10',
+    category: 'servicos',
+    status: 'pending',
+    recurring: 'none',
+    notes: 'Manutenção e troca pasta térmica',
+  },
+  {
+    id: 'bill-5',
+    title: 'Pagar a Luz (Enel)',
+    amount: 164.2,
+    dueDate: '2026-11-18',
+    category: 'moradia',
+    status: 'pending',
+    recurring: 'monthly',
+    notes: 'Conta de energia elétrica',
+  },
+  {
+    id: 'bill-6',
+    title: 'Pagar o Inglês',
+    amount: 230.0,
+    dueDate: '2026-11-20',
+    category: 'educacao',
+    status: 'pending',
+    recurring: 'monthly',
+    notes: 'Mensalidade do curso de conversação',
+  },
+];
+
+export const initialPersonalAppointments: PersonalAppointment[] = [
+  {
+    id: 'app-1',
+    title: 'Marcar dentista',
+    date: '2026-11-06',
+    time: '14:00',
+    location: 'Consultório Dr. Marcelo',
+    category: 'saude',
+    completed: true,
+    notes: 'Limpeza semestral de rotina',
+  },
+  {
+    id: 'app-2',
+    title: 'Marcar Médico (Rotina)',
+    date: '2026-11-06',
+    time: '16:30',
+    location: 'Clínica Médica Central',
+    category: 'saude',
+    completed: false,
+    notes: 'Checkup anual e exames de sangue',
+  },
+  {
+    id: 'app-3',
+    title: 'Autoescola (Aulas práticas de direção)',
+    date: '2026-11-06',
+    time: '08:00',
+    location: 'CFC Alvorada',
+    category: 'pessoal',
+    completed: true,
+    notes: 'Aulas práticas de trânsito',
+  },
+  {
+    id: 'app-4',
+    title: 'Mercado do Mês',
+    date: '2026-11-14',
+    time: '10:00',
+    location: 'Hipermercado',
+    category: 'pessoal',
+    completed: false,
+    notes: 'Compras gerais de mantimentos e limpeza',
   },
 ];

@@ -56,7 +56,7 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
   // Modal para conexão permanente via iCal
   const [isPermanentModalOpen, setIsPermanentModalOpen] = useState(false);
   const [icalInput, setIcalInput] = useState(() => getSavedCalendarIcal() || '');
-  const [savedIcal, setSavedIcal] = useState(() => getSavedCalendarIcal());
+  const [savedIcal, setSavedIcal] = useState<string | null>(() => getSavedCalendarIcal());
 
   // Calendar date navigation
   const [currentDate, setCurrentDate] = useState(new Date());

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Course, Task, TaskStatus, TaskType } from '../types';
+import { Course, Task, TaskStatus, TaskType, PersonalBill, PersonalAppointment } from '../types';
 import { getClassesForDayOfWeek, getEventDateStr, getEventTimeStr } from '../calendarUtils';
 import { getSavedCalendarToken, fetchGoogleCalendarEvents, GoogleCalendarEvent } from '../googleCalendar';
 import {
@@ -23,6 +23,7 @@ import {
   Video,
   MapPin,
   RefreshCw,
+  Wallet,
 } from 'lucide-react';
 
 interface HomeTabProps {
@@ -30,6 +31,8 @@ interface HomeTabProps {
   tasks: Task[];
   darkMode: boolean;
   calendarId?: string;
+  personalBills?: PersonalBill[];
+  personalAppointments?: PersonalAppointment[];
   onAddTask: (task: Task) => void;
   onUpdateTask: (task: Task) => void;
   onDeleteTask: (id: string) => void;
@@ -50,6 +53,8 @@ export const HomeTab: React.FC<HomeTabProps> = ({
   tasks,
   darkMode,
   calendarId: propCalendarId,
+  personalBills = [],
+  personalAppointments = [],
   onAddTask,
   onUpdateTask,
   onDeleteTask,
@@ -249,6 +254,43 @@ export const HomeTab: React.FC<HomeTabProps> = ({
             )}
           </div>
         )}
+
+        {/* Lembrete de Vida Pessoal & Contas a Pagar */}
+        {(() => {
+          const pending = personalBills.filter((b) => b.status === 'pending');
+          const dueToday = pending.filter((b) => b.dueDate === todayStr);
+          const overdue = pending.filter((b) => b.dueDate < todayStr);
+          if (dueToday.length === 0 && overdue.length === 0) return null;
+
+          return (
+            <div className="p-3.5 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-emerald-950 dark:text-emerald-200 shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0">
+                  <Wallet className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="font-semibold block text-sm">
+                    {dueToday.length > 0
+                      ? `Lembrete Financeiro: Você tem ${dueToday.length} conta(s) a pagar hoje!`
+                      : `Atenção: Você tem ${overdue.length} conta(s) em atraso na Vida Pessoal.`}
+                  </span>
+                  <span className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                    {dueToday.map((b) => `${b.title} (R$ ${b.amount.toFixed(2)})`).join(', ') ||
+                      overdue.map((b) => `${b.title}`).join(', ')}
+                  </span>
+                </div>
+              </div>
+              {onNavigateTab && (
+                <button
+                  onClick={() => onNavigateTab('personal')}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs transition-colors shrink-0 self-start sm:self-auto shadow-xs"
+                >
+                  Ver Vida Pessoal & Finanças →
+                </button>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Deliveries Cards Grid */}
         {todayDeliveries.length > 0 ? (

@@ -4,6 +4,9 @@ import admin from 'firebase-admin';
 const DEFAULT_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'painel-estudante-8b2c';
 const DEFAULT_DASHBOARD_ID = process.env.DEFAULT_DASHBOARD_ID || 'principal';
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || process.env.VITE_FIREBASE_API_KEY || 'AIzaSyD5uzbhpcINOZpH4w_aRBzitlKW7DErEI0';
+const DEFAULT_SECRET_ICAL =
+  process.env.GOOGLE_CALENDAR_ICAL_URL ||
+  'https://calendar.google.com/calendar/ical/nicolasplcoelho%40gmail.com/private-91081ea5291f05674ec0cc5df9fd3401/basic.ics';
 
 function getFirebaseAdminApp() {
   if (admin.apps.length > 0) return admin.apps[0]!;
@@ -19,6 +22,72 @@ function getFirebaseAdminApp() {
     } catch {}
   }
   return admin.initializeApp({ projectId: DEFAULT_PROJECT_ID });
+}
+
+const DAY_MAP: Record<string, number> = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
+
+function expandRecurringEvents(rawEvents: any[]): any[] {
+  const result: any[] = [];
+  const now = new Date();
+  const windowStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  const windowEnd = new Date(now.getFullYear(), now.getMonth() + 6, 0);
+
+  for (const ev of rawEvents) {
+    result.push(ev);
+    if (!ev.rrule || !ev.rrule.includes('FREQ=WEEKLY')) continue;
+
+    const rrule = ev.rrule;
+    const byDayMatch = rrule.match(/BYDAY=([A-Z,]+)/);
+    const targetDays = byDayMatch
+      ? byDayMatch[1].split(',').map((d: string) => DAY_MAP[d.trim()]).filter((n: number | undefined) => n !== undefined)
+      : null;
+
+    let until = windowEnd;
+    const untilMatch = rrule.match(/UNTIL=([0-9]+)/);
+    if (untilMatch) {
+      const raw = untilMatch[1];
+      const uy = parseInt(raw.substring(0, 4), 10);
+      const um = parseInt(raw.substring(4, 6), 10) - 1;
+      const ud = parseInt(raw.substring(6, 8), 10);
+      const untilDate = new Date(Date.UTC(uy, um, ud, 23, 59, 59));
+      if (untilDate < until) until = untilDate;
+    }
+
+    const startIso = ev.start?.dateTime || ev.start?.date;
+    if (!startIso) continue;
+    const baseDate = new Date(startIso);
+    if (isNaN(baseDate.getTime())) continue;
+
+    const timeSuffix = ev.start?.dateTime && ev.start.dateTime.includes('T')
+      ? ev.start.dateTime.substring(ev.start.dateTime.indexOf('T'))
+      : '';
+    const endTimeSuffix = ev.end?.dateTime && ev.end.dateTime.includes('T')
+      ? ev.end.dateTime.substring(ev.end.dateTime.indexOf('T'))
+      : '';
+
+    let cur = new Date(baseDate.getTime());
+    cur.setUTCDate(cur.getUTCDate() + 1);
+    let count = 0;
+    while (cur <= until && cur <= windowEnd && count++ < 300) {
+      const dayOfWeek = cur.getUTCDay();
+      if (!targetDays || targetDays.includes(dayOfWeek)) {
+        if (cur >= windowStart) {
+          const y = cur.getUTCFullYear();
+          const m = String(cur.getUTCMonth() + 1).padStart(2, '0');
+          const d = String(cur.getUTCDate()).padStart(2, '0');
+          const dateStr = `${y}-${m}-${d}`;
+          result.push({
+            ...ev,
+            id: `${ev.id}_${dateStr}`,
+            start: timeSuffix ? { dateTime: `${dateStr}${timeSuffix}` } : { date: dateStr },
+            end: endTimeSuffix ? { dateTime: `${dateStr}${endTimeSuffix}` } : (ev.end?.date ? { date: dateStr } : undefined),
+          });
+        }
+      }
+      cur.setUTCDate(cur.getUTCDate() + 1);
+    }
+  }
+  return result;
 }
 
 // Parser simples e eficiente para feeds iCalendar (.ics) do Google Calendar
@@ -46,20 +115,20 @@ function parseICal(icsText: string) {
         else if (key === 'SUMMARY') currentEvent.summary = value;
         else if (key === 'DESCRIPTION') currentEvent.description = value;
         else if (key === 'LOCATION') currentEvent.location = value;
+        else if (key === 'RRULE') currentEvent.rrule = value;
         else if (key === 'DTSTART') {
-          currentEvent.start = parseICalDate(value);
+          currentEvent.start = parseICalDate(value, fullKey);
         } else if (key === 'DTEND') {
-          currentEvent.end = parseICalDate(value);
+          currentEvent.end = parseICalDate(value, fullKey);
         }
       }
     }
   }
 
-  return events;
+  return expandRecurringEvents(events);
 }
 
-function parseICalDate(val: string) {
-  // Ex: 20261106T140000Z ou 20261106
+function parseICalDate(val: string, fullKey?: string) {
   if (val.length === 8) {
     const y = val.substring(0, 4);
     const m = val.substring(4, 6);
@@ -74,8 +143,11 @@ function parseICalDate(val: string) {
     const h = clean.substring(9, 11) || '00';
     const min = clean.substring(11, 13) || '00';
     const s = clean.substring(13, 15) || '00';
-    const iso = `${y}-${m}-${d}T${h}:${min}:${s}Z`;
-    return { dateTime: iso };
+    if (val.endsWith('Z')) {
+      return { dateTime: `${y}-${m}-${d}T${h}:${min}:${s}Z` };
+    }
+    // Timezone local Brasil (UTC-3)
+    return { dateTime: `${y}-${m}-${d}T${h}:${min}:${s}-03:00` };
   }
   return { date: val };
 }
@@ -89,9 +161,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
-  // 1. Obter configurações da agenda (do query param, do Firestore ou de env)
-  let icalUrl = (req.query.ical as string) || process.env.GOOGLE_CALENDAR_ICAL_URL || '';
-  let calendarEmail = (req.query.email as string) || (req.query.calendarId as string) || process.env.GOOGLE_CALENDAR_EMAIL || '';
+  // 1. Obter configurações da agenda (do query param, do Firestore ou de env/default)
+  let icalUrl =
+    (req.query.ical as string) ||
+    process.env.GOOGLE_CALENDAR_ICAL_URL ||
+    DEFAULT_SECRET_ICAL;
+  let calendarEmail =
+    (req.query.email as string) ||
+    (req.query.calendarId as string) ||
+    process.env.GOOGLE_CALENDAR_EMAIL ||
+    'nicolasplcoelho@gmail.com';
 
   // Se não foi passado via query nem env, tenta ler do Firestore
   if (!icalUrl && !calendarEmail) {

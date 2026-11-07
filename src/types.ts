@@ -98,3 +98,50 @@ export interface FirebaseConfig {
   messagingSenderId: string;
   appId: string;
 }
+
+// ==================== VIDA PESSOAL & FINANÇAS ====================
+
+export type BillCategory =
+  | 'moradia'
+  | 'servicos'
+  | 'educacao'
+  | 'saude'
+  | 'alimentacao'
+  | 'transporte'
+  | 'lazer'
+  | 'outros';
+
+export type BillStatus = 'pending' | 'paid';
+
+export interface PersonalBill {
+  id: string;
+  title: string; // Ex: "Pagar a Luz", "Pagar Água", "Pagar o Inglês"
+  amount: number; // Ex: 120.50
+  dueDate: string; // YYYY-MM-DD
+  category: BillCategory;
+  status: BillStatus;
+  paidAt?: string; // YYYY-MM-DD
+  recurring?: 'none' | 'monthly' | 'yearly';
+  notes?: string;
+  barcodeOrLink?: string; // PIX, código de barras ou link
+}
+
+export type AppointmentCategory =
+  | 'saude'
+  | 'pessoal'
+  | 'financeiro'
+  | 'estudo'
+  | 'outro';
+
+export interface PersonalAppointment {
+  id: string;
+  title: string; // Ex: "Marcar Médico", "Dentista", "Autoescola", "Mercado"
+  date: string; // YYYY-MM-DD
+  time?: string; // HH:mm
+  location?: string;
+  category: AppointmentCategory;
+  completed: boolean;
+  notes?: string;
+  source?: 'manual' | 'calendar';
+}
+

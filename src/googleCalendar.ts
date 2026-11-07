@@ -27,8 +27,11 @@ export function removeCalendarToken() {
   localStorage.removeItem(STORAGE_CALENDAR_TOKEN);
 }
 
-export function getSavedCalendarIcal(): string | null {
-  return localStorage.getItem(STORAGE_CALENDAR_ICAL);
+export const DEFAULT_CALENDAR_ICAL =
+  'https://calendar.google.com/calendar/ical/nicolasplcoelho%40gmail.com/private-91081ea5291f05674ec0cc5df9fd3401/basic.ics';
+
+export function getSavedCalendarIcal(): string {
+  return localStorage.getItem(STORAGE_CALENDAR_ICAL) || DEFAULT_CALENDAR_ICAL;
 }
 
 export function saveCalendarIcal(url: string) {
