@@ -226,6 +226,146 @@ const MCP_TOOLS = [
       },
     },
   },
+  {
+    name: 'create_personal_bill',
+    description:
+      'Adiciona uma nova conta a pagar (boleto, luz, água, internet, mensalidade, fatura) na aba de Vida Pessoal & Finanças do Painel e salva no Firebase.',
+    inputSchema: {
+      type: 'object',
+      required: ['title'],
+      properties: {
+        title: {
+          type: 'string',
+          description: 'Nome da despesa ou conta (ex: "Pagar a Luz", "Pagar o Inglês", "Fatura Cartão Nubank")',
+        },
+        amount: {
+          type: 'number',
+          description: 'Valor em reais (R$) (ex: 164.20, 230.00)',
+        },
+        dueDate: {
+          type: 'string',
+          description: 'Data de vencimento no formato YYYY-MM-DD. Se o usuário falar "hoje" ou omitir, usará a data atual.',
+        },
+        category: {
+          type: 'string',
+          enum: ['moradia', 'servicos', 'educacao', 'saude', 'alimentacao', 'transporte', 'lazer', 'outros'],
+          description: 'Categoria da despesa. Padrão: "moradia" ou "servicos"',
+        },
+        barcodeOrLink: {
+          type: 'string',
+          description: 'Chave PIX, código de barras digitável ou link de pagamento (opcional)',
+        },
+        notes: {
+          type: 'string',
+          description: 'Lembretes adicionais sobre a conta',
+        },
+        userId: {
+          type: 'string',
+          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+        },
+      },
+    },
+  },
+  {
+    name: 'list_personal_bills',
+    description:
+      'Lista as contas a pagar cadastradas na Vida Pessoal & Finanças (Bullet Journal), com valores em R$, vencimentos, status e totais.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        statusFilter: {
+          type: 'string',
+          enum: ['all', 'pending', 'paid', 'overdue'],
+          description: 'Filtro por status: "all" (todas), "pending" (apenas pendentes), "paid" (já pagas) ou "overdue" (atrasadas). Padrão: "all"',
+        },
+        userId: {
+          type: 'string',
+          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+        },
+      },
+    },
+  },
+  {
+    name: 'pay_bill',
+    description:
+      'Marca uma conta a pagar como quitada/paga (ou desmarca) na Vida Pessoal do Painel do Estudante.',
+    inputSchema: {
+      type: 'object',
+      required: ['billQuery'],
+      properties: {
+        billQuery: {
+          type: 'string',
+          description: 'Nome da conta ou trecho do título para buscar e marcar como paga (ex: "Luz", "Inglês", "Água")',
+        },
+        paid: {
+          type: 'boolean',
+          description: 'true para marcar como paga, false para desmarcar. Padrão: true',
+        },
+        userId: {
+          type: 'string',
+          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+        },
+      },
+    },
+  },
+  {
+    name: 'create_personal_appointment',
+    description:
+      'Adiciona um novo compromisso pessoal ou de saúde (consulta médica, dentista, autoescola, mercado, recados) no Bullet Journal do Painel do Estudante.',
+    inputSchema: {
+      type: 'object',
+      required: ['title'],
+      properties: {
+        title: {
+          type: 'string',
+          description: 'Título do compromisso (ex: "Marcar dentista", "Consulta com dermatologista", "Autoescola")',
+        },
+        date: {
+          type: 'string',
+          description: 'Data do compromisso no formato YYYY-MM-DD. Se omitido, usará a data atual.',
+        },
+        time: {
+          type: 'string',
+          description: 'Horário do compromisso no formato HH:mm (ex: "14:30")',
+        },
+        location: {
+          type: 'string',
+          description: 'Localização ou endereço do compromisso (ex: "Consultório Dr. Marcelo")',
+        },
+        category: {
+          type: 'string',
+          enum: ['saude', 'pessoal', 'financeiro', 'estudo', 'outro'],
+          description: 'Categoria do compromisso. Padrão: "pessoal"',
+        },
+        notes: {
+          type: 'string',
+          description: 'Observações ou lembretes (ex: "levar carteirinha do plano")',
+        },
+        userId: {
+          type: 'string',
+          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+        },
+      },
+    },
+  },
+  {
+    name: 'list_personal_appointments',
+    description:
+      'Lista os compromissos pessoais, consultas médicas e rotina agendada no Bullet Journal do Painel.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        includeCompleted: {
+          type: 'boolean',
+          description: 'Se true, inclui também compromissos já concluídos. Padrão: false',
+        },
+        userId: {
+          type: 'string',
+          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+        },
+      },
+    },
+  },
 ];
 
 // ============================================================================
@@ -306,6 +446,39 @@ async function executeTool(name: string, args: any): Promise<string> {
     activeCourses.forEach((c) => {
       output += `- **${c.code} - ${c.name}**: ${c.schedule || 'Horário flexível'} (Sala: ${c.roomOrLink || 'A definir'}) - Prof: ${c.professor || 'Não informado'}\n`;
     });
+    output += `\n`;
+
+    // 6. Vida Pessoal, Finanças & Compromissos
+    const bills: any[] = dashboard.personalBills || [];
+    const appointments: any[] = dashboard.personalAppointments || [];
+
+    const todayBills = bills.filter((b) => b.dueDate === todayStr && b.status !== 'paid');
+    const overdueBills = bills.filter((b) => b.status !== 'paid' && b.dueDate < todayStr);
+    const todayAppointments = appointments.filter((a) => a.date === todayStr && !a.completed);
+
+    output += `## 💳 Vida Pessoal, Contas a Pagar & Compromissos de Hoje\n`;
+    if (todayBills.length > 0 || overdueBills.length > 0 || todayAppointments.length > 0) {
+      if (todayBills.length > 0) {
+        output += `### 💰 Contas que vencem HOJE:\n`;
+        todayBills.forEach((b) => {
+          output += `- **${b.title}**: R$ ${Number(b.amount || 0).toFixed(2)} (Categoria: ${b.category || 'geral'})\n`;
+        });
+      }
+      if (overdueBills.length > 0) {
+        output += `### ⚠️ Contas ATRASADAS:\n`;
+        overdueBills.forEach((b) => {
+          output += `- ❗ **${b.title}**: R$ ${Number(b.amount || 0).toFixed(2)} (Venceu em: ${b.dueDate})\n`;
+        });
+      }
+      if (todayAppointments.length > 0) {
+        output += `### 🗓️ Compromissos Pessoais & Saúde de Hoje:\n`;
+        todayAppointments.forEach((a) => {
+          output += `- **${a.title}**${a.time ? ` às ${a.time}` : ''}${a.location ? ` em ${a.location}` : ''} (Categoria: ${a.category || 'pessoal'})\n`;
+        });
+      }
+    } else {
+      output += `*Nenhuma conta vencendo hoje e nenhum compromisso pendente para o dia. Tudo em dia na rotina pessoal!*\n`;
+    }
 
     return output;
   }
@@ -410,6 +583,148 @@ A tarefa **"${task.name}"** foi movida para o status **"${args.newStatus === 'do
         });
       }
       out += `\n`;
+    });
+    return out;
+  }
+
+  if (name === 'create_personal_bill') {
+    const dashboard = await getStudentDashboard(userId);
+    const bills: any[] = dashboard.personalBills || [];
+
+    let dueDate = args.dueDate ? String(args.dueDate).trim() : todayStr;
+    if (dueDate.toLowerCase() === 'hoje') dueDate = todayStr;
+    if (dueDate.toLowerCase() === 'amanha' || dueDate.toLowerCase() === 'amanhã') {
+      const tomorrow = new Date(Date.now() + 86400000);
+      dueDate = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+    }
+
+    const newBill = {
+      id: `bill-${Date.now()}`,
+      title: String(args.title).trim(),
+      amount: Number(args.amount) || 0,
+      dueDate,
+      category: args.category || 'moradia',
+      status: 'pending',
+      barcodeOrLink: args.barcodeOrLink ? String(args.barcodeOrLink).trim() : '',
+      notes: args.notes ? String(args.notes).trim() : '',
+    };
+
+    const updatedBills = [...bills, newBill];
+    await saveStudentDashboard(userId, { ...dashboard, personalBills: updatedBills });
+
+    return `✅ **Conta Adicionada com Sucesso na Vida Pessoal!**
+
+- **Despesa:** ${newBill.title}
+- **Valor:** R$ ${newBill.amount.toFixed(2)}
+- **Data de Vencimento:** ${newBill.dueDate}
+- **Categoria:** ${newBill.category}
+- **Status:** Pendente
+${newBill.barcodeOrLink ? `- **Código/PIX:** ${newBill.barcodeOrLink}\n` : ''}
+*Já visível no seu Bullet Journal e na aba Vida Pessoal & Finanças.*`;
+  }
+
+  if (name === 'list_personal_bills') {
+    const dashboard = await getStudentDashboard(userId);
+    const bills: any[] = dashboard.personalBills || [];
+
+    if (bills.length === 0) {
+      return `Nenhuma conta cadastrada na aba de Vida Pessoal & Finanças.`;
+    }
+
+    let filtered = bills;
+    if (args.statusFilter === 'pending') filtered = bills.filter((b) => b.status === 'pending');
+    else if (args.statusFilter === 'paid') filtered = bills.filter((b) => b.status === 'paid');
+    else if (args.statusFilter === 'overdue') filtered = bills.filter((b) => b.status === 'pending' && b.dueDate < todayStr);
+
+    let totalPending = 0;
+    let totalPaid = 0;
+    bills.forEach((b) => {
+      if (b.status === 'paid') totalPaid += Number(b.amount || 0);
+      else totalPending += Number(b.amount || 0);
+    });
+
+    let out = `# 💳 Contas a Pagar & Finanças (${filtered.length})\n\n`;
+    out += `💰 **Total a Pagar (Pendente):** R$ ${totalPending.toFixed(2)} | **Total Já Pago:** R$ ${totalPaid.toFixed(2)}\n\n`;
+
+    filtered.forEach((b) => {
+      const isPaid = b.status === 'paid';
+      const isOverdue = !isPaid && b.dueDate < todayStr;
+      const statusIcon = isPaid ? '✅' : isOverdue ? '⚠️' : '🕒';
+      out += `- ${statusIcon} **${b.title}** — R$ ${Number(b.amount || 0).toFixed(2)} | Vencimento: ${b.dueDate} | Status: ${isPaid ? 'Pago' : isOverdue ? 'Atrasado' : 'Pendente'}\n`;
+      if (b.barcodeOrLink) out += `  *PIX/Linha digitável: ${b.barcodeOrLink}*\n`;
+      if (b.notes) out += `  *Nota: ${b.notes}*\n`;
+    });
+
+    return out;
+  }
+
+  if (name === 'pay_bill') {
+    const dashboard = await getStudentDashboard(userId);
+    const bills: any[] = dashboard.personalBills || [];
+    const query = String(args.billQuery || '').toLowerCase();
+    const shouldPay = args.paid !== false;
+
+    const idx = bills.findIndex(
+      (b) => b.id === args.billQuery || b.title?.toLowerCase().includes(query)
+    );
+
+    if (idx === -1) {
+      return `❌ Não encontrei nenhuma conta com o nome ou ID contendo "${args.billQuery}".`;
+    }
+
+    const bill = bills[idx];
+    bill.status = shouldPay ? 'paid' : 'pending';
+    bill.paidAt = shouldPay ? todayStr : undefined;
+    await saveStudentDashboard(userId, { ...dashboard, personalBills: bills });
+
+    return `✅ **Conta Atualizada!**
+A despesa **"${bill.title}"** (R$ ${Number(bill.amount || 0).toFixed(2)}) foi marcada como **${shouldPay ? 'PAGA / QUITADA' : 'PENDENTE'}** com sucesso no painel.`;
+  }
+
+  if (name === 'create_personal_appointment') {
+    const dashboard = await getStudentDashboard(userId);
+    const appointments: any[] = dashboard.personalAppointments || [];
+
+    const newApp = {
+      id: `app-${Date.now()}`,
+      title: String(args.title).trim(),
+      date: args.date ? String(args.date).trim() : todayStr,
+      time: args.time ? String(args.time).trim() : undefined,
+      location: args.location ? String(args.location).trim() : undefined,
+      category: args.category || 'pessoal',
+      completed: false,
+      notes: args.notes ? String(args.notes).trim() : '',
+    };
+
+    const updated = [...appointments, newApp];
+    await saveStudentDashboard(userId, { ...dashboard, personalAppointments: updated });
+
+    return `✅ **Compromisso Criado no Bullet Journal!**
+
+- **Compromisso:** ${newApp.title}
+- **Data:** ${newApp.date}
+${newApp.time ? `- **Horário:** ${newApp.time}\n` : ''}
+${newApp.location ? `- **Local:** ${newApp.location}\n` : ''}
+- **Categoria:** ${newApp.category}
+*Já visível no seu Daily Log e no card de Tarefas do dia.*`;
+  }
+
+  if (name === 'list_personal_appointments') {
+    const dashboard = await getStudentDashboard(userId);
+    const appointments: any[] = dashboard.personalAppointments || [];
+
+    const list = args.includeCompleted
+      ? appointments
+      : appointments.filter((a) => !a.completed);
+
+    if (list.length === 0) {
+      return `Nenhum compromisso agendado encontrado no Bullet Journal.`;
+    }
+
+    let out = `# 🗓️ Compromissos & Rotina Pessoal (${list.length})\n\n`;
+    list.forEach((a) => {
+      out += `- [${a.completed ? 'X' : ' '}] **${a.title}** — Data: ${a.date}${a.time ? ` às ${a.time}` : ''}${a.location ? ` (${a.location})` : ''} | Categoria: ${a.category || 'pessoal'}\n`;
+      if (a.notes) out += `  *Nota: ${a.notes}*\n`;
     });
     return out;
   }
