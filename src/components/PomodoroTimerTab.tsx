@@ -271,12 +271,24 @@ export const PomodoroTimerTab: React.FC<PomodoroTimerTabProps> = ({
         <div className="inline-flex items-center gap-1.5 bg-[#efeeea] dark:bg-[#2a2a2a] p-1.5 rounded-2xl flex-wrap justify-center">
           <button
             onClick={() => {
-              if (isRunning && !window.confirm('Deseja interromper a sessão atual para mudar de modo?')) return;
-              setMode('pomodoro');
-              setIsRunning(false);
-              setStartTime(null);
-              setElapsedSeconds(0);
-              setTimeLeft(focusMinutes * 60);
+              const doSwitch = () => {
+                setMode('pomodoro');
+                setIsRunning(false);
+                setStartTime(null);
+                setElapsedSeconds(0);
+                setTimeLeft(focusMinutes * 60);
+              };
+              if (isRunning) {
+                showConfirm({
+                  title: 'Interromper Foco',
+                  message: 'Deseja interromper a sessão de foco atual para mudar de modo?',
+                  confirmText: 'Interromper',
+                  danger: true,
+                  onConfirm: doSwitch,
+                });
+              } else {
+                doSwitch();
+              }
             }}
             className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
               mode === 'pomodoro'
@@ -290,12 +302,24 @@ export const PomodoroTimerTab: React.FC<PomodoroTimerTabProps> = ({
 
           <button
             onClick={() => {
-              if (isRunning && !window.confirm('Deseja interromper a sessão atual para mudar de modo?')) return;
-              setMode('short_break');
-              setIsRunning(false);
-              setStartTime(null);
-              setElapsedSeconds(0);
-              setTimeLeft(shortBreakMinutes * 60);
+              const doSwitch = () => {
+                setMode('short_break');
+                setIsRunning(false);
+                setStartTime(null);
+                setElapsedSeconds(0);
+                setTimeLeft(shortBreakMinutes * 60);
+              };
+              if (isRunning) {
+                showConfirm({
+                  title: 'Mudar de Modo',
+                  message: 'Deseja interromper a sessão atual para mudar para Pausa Curta?',
+                  confirmText: 'Mudar',
+                  danger: true,
+                  onConfirm: doSwitch,
+                });
+              } else {
+                doSwitch();
+              }
             }}
             className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
               mode === 'short_break'
@@ -309,12 +333,24 @@ export const PomodoroTimerTab: React.FC<PomodoroTimerTabProps> = ({
 
           <button
             onClick={() => {
-              if (isRunning && !window.confirm('Deseja interromper a sessão atual para mudar de modo?')) return;
-              setMode('long_break');
-              setIsRunning(false);
-              setStartTime(null);
-              setElapsedSeconds(0);
-              setTimeLeft(longBreakMinutes * 60);
+              const doSwitch = () => {
+                setMode('long_break');
+                setIsRunning(false);
+                setStartTime(null);
+                setElapsedSeconds(0);
+                setTimeLeft(longBreakMinutes * 60);
+              };
+              if (isRunning) {
+                showConfirm({
+                  title: 'Mudar de Modo',
+                  message: 'Deseja interromper a sessão atual para mudar para Pausa Longa?',
+                  confirmText: 'Mudar',
+                  danger: true,
+                  onConfirm: doSwitch,
+                });
+              } else {
+                doSwitch();
+              }
             }}
             className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
               mode === 'long_break'
