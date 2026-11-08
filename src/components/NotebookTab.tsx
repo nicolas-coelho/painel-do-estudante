@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { NotebookNote } from '../types';
+import { useNotification } from '../context/NotificationContext';
 import { Plus, Tag, Trash2, X, Search, FileText } from 'lucide-react';
 
 interface NotebookTabProps {
@@ -13,6 +14,7 @@ export const NotebookTab: React.FC<NotebookTabProps> = ({
   onAddNote,
   onDeleteNote,
 }) => {
+  const { showToast, showConfirm } = useNotification();
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [title, setTitle] = useState('');
@@ -90,7 +92,18 @@ export const NotebookTab: React.FC<NotebookTabProps> = ({
                   </h4>
                 </div>
                 <button
-                  onClick={() => onDeleteNote(note.id)}
+                  onClick={() => {
+                    showConfirm({
+                      title: 'Excluir Anotação',
+                      message: `Tem certeza que deseja excluir "${note.title}"?`,
+                      confirmText: 'Excluir',
+                      danger: true,
+                      onConfirm: () => {
+                        onDeleteNote(note.id);
+                        showToast('info', 'Anotação Excluída', `"${note.title}" foi removida.`);
+                      },
+                    });
+                  }}
                   className="opacity-0 group-hover:opacity-100 p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded transition-all"
                   title="Excluir"
                 >

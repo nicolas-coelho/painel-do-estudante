@@ -41,8 +41,11 @@ import {
   LayoutDashboard,
   Wallet,
 } from 'lucide-react';
+import { useNotification } from './context/NotificationContext';
 
 export const App: React.FC = () => {
+  const { showToast } = useNotification();
+
   // Theme state
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     return localStorage.getItem('study_dashboard_dark') === 'true';
@@ -404,9 +407,9 @@ export const App: React.FC = () => {
           localStorage.setItem('study_personal_appointments', JSON.stringify(parsed.personalAppointments));
           syncEntityToCloud('personalAppointments', parsed.personalAppointments);
         }
-        alert('✅ Dados restaurados e sincronizados com sucesso!');
+        showToast('success', 'Backup Restaurado!', 'Todos os seus dados foram restaurados e sincronizados com a nuvem.');
       } catch {
-        alert('❌ Erro ao ler arquivo de backup.');
+        showToast('error', 'Falha na Restauração', 'Não foi possível ler o arquivo de backup selecionado.');
       }
     };
     reader.readAsText(file);

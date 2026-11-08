@@ -30,6 +30,7 @@ import {
   HelpCircle,
   Filter,
 } from 'lucide-react';
+import { useNotification } from '../context/NotificationContext';
 
 interface PersonalLifeTabProps {
   bills: PersonalBill[];
@@ -56,6 +57,8 @@ export const PersonalLifeTab: React.FC<PersonalLifeTabProps> = ({
   onUpdateAppointment,
   onDeleteAppointment,
 }) => {
+  const { showToast, showConfirm } = useNotification();
+
   // Toggle "How to get started"
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
@@ -284,18 +287,36 @@ export const PersonalLifeTab: React.FC<PersonalLifeTabProps> = ({
         status: isNowPaid ? 'paid' : 'pending',
         paidAt: isNowPaid ? todayStr : undefined,
       });
+      if (isNowPaid) {
+        showToast('success', 'Conta Paga!', `"${b.title}" foi marcada como quitada.`);
+      } else {
+        showToast('info', 'Status Atualizado', `"${b.title}" voltou para pendente.`);
+      }
     } else {
       const a = item.raw as PersonalAppointment;
       onUpdateAppointment({
         ...a,
         completed: !a.completed,
       });
+      if (!a.completed) {
+        showToast('success', 'Compromisso Concluído!', `"${a.title}" foi finalizado.`);
+      }
     }
   };
 
-  const handleDeleteEntry = (item: { type: 'bill' | 'appointment'; id: string }) => {
-    if (item.type === 'bill') onDeleteBill(item.id);
-    else onDeleteAppointment(item.id);
+  const handleDeleteEntry = (item: { type: 'bill' | 'appointment'; id: string; title?: string }) => {
+    const isBill = item.type === 'bill';
+    showConfirm({
+      title: isBill ? 'Excluir Conta' : 'Excluir Compromisso',
+      message: `Tem certeza que deseja excluir "${item.title || 'este registro'}" do seu diário pessoal?`,
+      confirmText: 'Excluir',
+      danger: true,
+      onConfirm: () => {
+        if (isBill) onDeleteBill(item.id);
+        else onDeleteAppointment(item.id);
+        showToast('info', isBill ? 'Conta Excluída' : 'Compromisso Excluído', 'Registro removido com sucesso.');
+      },
+    });
   };
 
   const handleQuickAddLeft = (e: React.FormEvent) => {

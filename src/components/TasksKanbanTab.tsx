@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Task, Course, TaskStatus, TaskType } from '../types';
+import { useNotification } from '../context/NotificationContext';
 import { Plus, Calendar, AlertCircle, Trash2, X, GripVertical } from 'lucide-react';
 
 interface TasksKanbanTabProps {
@@ -17,6 +18,7 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
   onUpdateTask,
   onDeleteTask,
 }) => {
+  const { showToast, showConfirm } = useNotification();
   const [selectedCourse, setSelectedCourse] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
@@ -289,7 +291,16 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              onDeleteTask(task.id);
+                              showConfirm({
+                                title: 'Excluir Tarefa',
+                                message: `Tem certeza que deseja excluir a atividade "${task.name}"?`,
+                                confirmText: 'Excluir',
+                                danger: true,
+                                onConfirm: () => {
+                                  onDeleteTask(task.id);
+                                  showToast('info', 'Tarefa Excluída', `"${task.name}" foi removida.`);
+                                },
+                              });
                             }}
                             className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded transition-colors"
                             title="Excluir tarefa"

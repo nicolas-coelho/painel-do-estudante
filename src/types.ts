@@ -76,6 +76,8 @@ export interface StudySession {
   courseId: string;
   topicId?: string;
   date: string;
+  startTime?: string; // Ex: "14:30"
+  endTime?: string; // Ex: "15:15"
   durationMinutes: number;
   completed: boolean;
   notes: string;

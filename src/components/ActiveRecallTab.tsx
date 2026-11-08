@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { StudyTopic, Course, ExerciseAttempt } from '../types';
+import { useNotification } from '../context/NotificationContext';
 import {
   Brain,
   Target,
@@ -50,6 +51,7 @@ export const ActiveRecallTab: React.FC<ActiveRecallTabProps> = ({
   onUpdateTopic,
   onDeleteTopic,
 }) => {
+  const { showToast, showConfirm } = useNotification();
   // Meta Global de Excelência (padrão 80%)
   const [excellenceTarget, setExcellenceTarget] = useState<number>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_EXCELLENCE_TARGET);
@@ -697,7 +699,18 @@ export const ActiveRecallTab: React.FC<ActiveRecallTabProps> = ({
                         )}
 
                         <button
-                          onClick={() => onDeleteTopic(topic.id)}
+                          onClick={() => {
+                            showConfirm({
+                              title: 'Excluir Tópico de Revisão',
+                              message: `Tem certeza que deseja excluir "${topic.name}"?`,
+                              confirmText: 'Excluir',
+                              danger: true,
+                              onConfirm: () => {
+                                onDeleteTopic(topic.id);
+                                showToast('info', 'Tópico Excluído', `"${topic.name}" foi removido.`);
+                              },
+                            });
+                          }}
                           className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-all cursor-pointer"
                           title="Excluir assunto"
                         >

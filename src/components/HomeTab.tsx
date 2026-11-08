@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Course, Task, TaskStatus, TaskType, PersonalBill, PersonalAppointment } from '../types';
+import { useNotification } from '../context/NotificationContext';
 import { getClassesForDayOfWeek, getEventDateStr, getEventTimeStr } from '../calendarUtils';
 import { getSavedCalendarToken, fetchGoogleCalendarEvents, GoogleCalendarEvent } from '../googleCalendar';
 import {
@@ -60,6 +61,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
   onDeleteTask,
   onNavigateTab,
 }) => {
+  const { showToast, showConfirm } = useNotification();
   const todayStr = getLocalDateStr();
 
   // Task creation modal
@@ -585,7 +587,18 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                               </button>
                             )}
                             <button
-                              onClick={() => onDeleteTask(task.id)}
+                              onClick={() => {
+                                showConfirm({
+                                  title: 'Excluir Tarefa',
+                                  message: `Tem certeza que deseja excluir a atividade "${task.name}"?`,
+                                  confirmText: 'Excluir',
+                                  danger: true,
+                                  onConfirm: () => {
+                                    onDeleteTask(task.id);
+                                    showToast('info', 'Tarefa Excluída', `"${task.name}" foi removida.`);
+                                  },
+                                });
+                              }}
                               className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded transition-colors ml-0.5"
                               title="Excluir tarefa"
                             >

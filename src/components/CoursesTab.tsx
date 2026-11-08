@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Course, GradeItem, SyllabusItem, Task } from '../types';
+import { useNotification } from '../context/NotificationContext';
 import {
   Plus,
   BookOpen,
@@ -32,6 +33,7 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
   onUpdateCourse,
   onDeleteCourse,
 }) => {
+  const { showToast, showConfirm } = useNotification();
   const [filter, setFilter] = useState<'all' | 'in_progress'>('in_progress');
   const [semesterFilter, setSemesterFilter] = useState<string>('all');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -289,9 +291,16 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (confirm(`Excluir a disciplina "${c.name}"?`)) {
-                          onDeleteCourse(c.id);
-                        }
+                        showConfirm({
+                          title: 'Excluir Disciplina',
+                          message: `Tem certeza que deseja excluir a disciplina "${c.name}"? As tarefas já cadastradas permanecerão no histórico.`,
+                          confirmText: 'Excluir Disciplina',
+                          danger: true,
+                          onConfirm: () => {
+                            onDeleteCourse(c.id);
+                            showToast('info', 'Disciplina Excluída', `"${c.name}" foi removida com sucesso.`);
+                          },
+                        });
                       }}
                       className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded"
                       title="Excluir disciplina"
@@ -871,10 +880,17 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  if (confirm(`Tem certeza que deseja excluir "${editingCourse.name}"?`)) {
-                    onDeleteCourse(editingCourse.id);
-                    setEditingCourse(null);
-                  }
+                  showConfirm({
+                    title: 'Excluir Disciplina',
+                    message: `Tem certeza que deseja excluir "${editingCourse.name}"? Esta ação removerá a disciplina da sua lista.`,
+                    confirmText: 'Excluir',
+                    danger: true,
+                    onConfirm: () => {
+                      onDeleteCourse(editingCourse.id);
+                      setEditingCourse(null);
+                      showToast('info', 'Disciplina Excluída', `"${editingCourse.name}" foi removida.`);
+                    },
+                  });
                 }}
                 className="text-xs text-red-500 hover:text-red-600 font-medium flex items-center gap-1"
               >
