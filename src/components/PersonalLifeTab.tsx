@@ -82,6 +82,8 @@ export const PersonalLifeTab: React.FC<PersonalLifeTabProps> = ({
   const [isAppModalOpen, setIsAppModalOpen] = useState(false);
   const [editingApp, setEditingApp] = useState<PersonalAppointment | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importModalTab, setImportModalTab] = useState<'calendar' | 'gemini'>('gemini');
+  const [geminiText, setGeminiText] = useState('');
 
   // Form states - Conta
   const [billTitle, setBillTitle] = useState('');
@@ -317,6 +319,64 @@ export const PersonalLifeTab: React.FC<PersonalLifeTabProps> = ({
         showToast('info', isBill ? 'Conta Excluída' : 'Compromisso Excluído', 'Registro removido com sucesso.');
       },
     });
+  };
+
+  const handleParseAndImportGemini = () => {
+    if (!geminiText.trim()) return;
+    const lines = geminiText.split('\n').filter((l) => l.trim().length > 0);
+    let importedCount = 0;
+
+    lines.forEach((line) => {
+      // Procura valor monetário: R$ 123,45 ou 123,45 ou 120.00
+      const moneyMatch = line.match(/(?:R\$\s*)?(\d{1,4}[.,]\d{2})/i);
+      // Procura data: 15/11/2026 ou 15/11 ou 2026-11-15
+      const dateMatch = line.match(/(\d{4}-\d{2}-\d{2})|(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?/);
+
+      let amount = 0;
+      if (moneyMatch) {
+        amount = parseFloat(moneyMatch[1].replace(',', '.'));
+      }
+
+      let dueDate = todayStr;
+      if (dateMatch) {
+        if (dateMatch[1]) {
+          dueDate = dateMatch[1];
+        } else {
+          const day = dateMatch[2].padStart(2, '0');
+          const month = dateMatch[3].padStart(2, '0');
+          const year = dateMatch[4] ? (dateMatch[4].length === 2 ? `20${dateMatch[4]}` : dateMatch[4]) : new Date().getFullYear().toString();
+          dueDate = `${year}-${month}-${day}`;
+        }
+      }
+
+      // Título: limpa marcadores e valores
+      let title = line
+        .replace(/^[\s\-\*\•\d\.\)\:]+/, '')
+        .replace(/(?:R\$\s*)?(\d{1,4}[.,]\d{2})/gi, '')
+        .replace(/(?:vence|vencimento|data|dia)?\s*(?:\d{4}-\d{2}-\d{2}|\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?)/gi, '')
+        .replace(/[\-\–\|]/g, ' ')
+        .trim();
+
+      if (title.length < 3) title = `Conta importada (${dueDate})`;
+
+      const newBill: PersonalBill = {
+        id: `bill-gemini-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        title,
+        amount,
+        dueDate,
+        category: 'moradia',
+        status: 'pending',
+        recurring: 'none',
+        notes: 'Importado via Gemini',
+      };
+
+      onAddBill(newBill);
+      importedCount++;
+    });
+
+    setGeminiText('');
+    setIsImportModalOpen(false);
+    showToast('success', 'Importação do Gemini Concluída!', `${importedCount} conta(s) adicionada(s) à sua Vida Pessoal.`);
   };
 
   const handleQuickAddLeft = (e: React.FormEvent) => {
@@ -1290,15 +1350,37 @@ export const PersonalLifeTab: React.FC<PersonalLifeTabProps> = ({
         </div>
       )}
 
-      {/* ======================= MODAL IMPORTAR DA AGENDA ======================= */}
+      {/* ======================= MODAL IMPORTAR DA AGENDA / GEMINI ======================= */}
       {isImportModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
           <div className="bg-white dark:bg-[#202020] border border-[#e9e9e8] dark:border-[#333] rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-[#f0efec] dark:border-[#2d2d2d]">
-              <h3 className="text-sm font-bold text-[#37352f] dark:text-white flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-purple-600" />
-                <span>Contas Detectadas na sua Google Agenda</span>
-              </h3>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setImportModalTab('gemini')}
+                  className={`text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1.5 ${
+                    importModalTab === 'gemini'
+                      ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300'
+                      : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                  <span>Do Gemini / Gmail</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImportModalTab('calendar')}
+                  className={`text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1.5 ${
+                    importModalTab === 'calendar'
+                      ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300'
+                      : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
+                  }`}
+                >
+                  <CalendarIcon className="w-3.5 h-3.5 text-stone-600 dark:text-stone-400" />
+                  <span>Google Agenda ({detectedCalendarBills.filter((c) => !c.existing).length})</span>
+                </button>
+              </div>
               <button
                 onClick={() => setIsImportModalOpen(false)}
                 className="text-stone-400 hover:text-stone-700 text-lg font-bold"
@@ -1307,59 +1389,96 @@ export const PersonalLifeTab: React.FC<PersonalLifeTabProps> = ({
               </button>
             </div>
 
-            <p className="text-xs text-[#787774] dark:text-[#9b9a97]">
-              Encontramos os seguintes lembretes financeiros na sua agenda:
-            </p>
+            {importModalTab === 'gemini' ? (
+              <div className="space-y-3">
+                <p className="text-xs text-[#787774] dark:text-[#9b9a97]">
+                  No <b>gemini.google.com</b>, peça ao Gemini:{' '}
+                  <span className="italic text-purple-600 dark:text-purple-400 font-mono">
+                    "@Gmail liste meus boletos a vencer com Nome, Valor e Data"
+                  </span>
+                  . Depois cole o resultado abaixo:
+                </p>
 
-            <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1 text-xs">
-              {detectedCalendarBills.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between p-2.5 rounded-xl bg-stone-50 dark:bg-stone-800/60 border border-[#e9e9e8] dark:border-[#333]"
-                >
-                  <div>
-                    <h5 className="font-semibold text-[#37352f] dark:text-white">
-                      {item.summary}
-                    </h5>
-                    <span className="text-[11px] text-[#787774] dark:text-[#9b9a97]">
-                      {item.date.split('-').reverse().join('/')}
-                    </span>
-                  </div>
+                <textarea
+                  rows={4}
+                  value={geminiText}
+                  onChange={(e) => setGeminiText(e.target.value)}
+                  placeholder={`Exemplo:\n• Conta de Luz - R$ 164,20 - Vencimento 15/11\n• Internet Vivo - R$ 119,90 - Vence 20/11\n• Cartão de Crédito - R$ 450,00 - 25/11/2026`}
+                  className="w-full text-xs p-3 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-stone-900 text-[#37352f] dark:text-white font-mono focus:ring-1 focus:ring-purple-500 outline-none"
+                />
 
-                  {item.existing ? (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
-                      Já adicionado ✓
-                    </span>
-                  ) : (
-                    <button
-                      onClick={() => {
-                        const newBill: PersonalBill = {
-                          id: `bill-imported-${Date.now()}`,
-                          title: item.summary,
-                          amount: 0,
-                          dueDate: item.date,
-                          category: 'moradia',
-                          status: 'pending',
-                          recurring: 'monthly',
-                          notes: 'Importado da Google Agenda',
-                        };
-                        onAddBill(newBill);
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-medium text-xs transition-colors"
-                    >
-                      Adicionar
-                    </button>
-                  )}
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[11px] text-stone-400">
+                    Detecta valores em R$ e datas automaticamente.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleParseAndImportGemini}
+                    disabled={!geminiText.trim()}
+                    className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-xs font-semibold transition-all shadow-sm flex items-center gap-1.5"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Adicionar Contas</span>
+                  </button>
                 </div>
-              ))}
-            </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-[#787774] dark:text-[#9b9a97]">
+                  Encontramos os seguintes lembretes financeiros na sua agenda:
+                </p>
+
+                <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1 text-xs">
+                  {detectedCalendarBills.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-2.5 rounded-xl bg-stone-50 dark:bg-stone-800/60 border border-[#e9e9e8] dark:border-[#333]"
+                    >
+                      <div>
+                        <h5 className="font-semibold text-[#37352f] dark:text-white">
+                          {item.summary}
+                        </h5>
+                        <span className="text-[11px] text-[#787774] dark:text-[#9b9a97]">
+                          {item.date.split('-').reverse().join('/')}
+                        </span>
+                      </div>
+
+                      {item.existing ? (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                          Já adicionado ✓
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            const newBill: PersonalBill = {
+                              id: `bill-imported-${Date.now()}`,
+                              title: item.summary,
+                              amount: 0,
+                              dueDate: item.date,
+                              category: 'moradia',
+                              status: 'pending',
+                              recurring: 'monthly',
+                              notes: 'Importado da Google Agenda',
+                            };
+                            onAddBill(newBill);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-medium text-xs transition-colors"
+                        >
+                          Adicionar
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="flex justify-end pt-2 border-t border-[#f0efec] dark:border-[#2d2d2d]">
               <button
                 onClick={() => setIsImportModalOpen(false)}
                 className="px-4 py-1.5 rounded-xl bg-stone-900 text-white dark:bg-white dark:text-stone-900 text-xs font-semibold"
               >
-                Concluir
+                Fechar
               </button>
             </div>
           </div>

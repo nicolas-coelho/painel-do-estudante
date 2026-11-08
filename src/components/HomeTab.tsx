@@ -114,6 +114,23 @@ export const HomeTab: React.FC<HomeTabProps> = ({
       }))
   );
 
+  // Acompanha estritamente as disciplinas cadastradas em andamento (ou com tarefas atribuídas)
+  const visibleCourses = courses.filter(
+    (c) => c.inProgress !== false || tasks.some((t) => t.courseId === c.id)
+  );
+
+  useEffect(() => {
+    if (selectedCourseFilter !== 'all' && !visibleCourses.some((c) => c.id === selectedCourseFilter)) {
+      setSelectedCourseFilter('all');
+    }
+  }, [selectedCourseFilter, visibleCourses]);
+
+  useEffect(() => {
+    if (!taskCourseId || !visibleCourses.some((c) => c.id === taskCourseId)) {
+      setTaskCourseId(visibleCourses[0]?.id || courses[0]?.id || '');
+    }
+  }, [visibleCourses]);
+
   // Filtered tasks for the Kanban Board
   const filteredTasks = tasks.filter(
     (t) => selectedCourseFilter === 'all' || t.courseId === selectedCourseFilter
@@ -132,7 +149,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
     const newTask: Task = {
       id: `task-${Date.now()}`,
       name: taskName.trim(),
-      courseId: taskCourseId || courses[0]?.id || '',
+      courseId: taskCourseId || visibleCourses[0]?.id || courses[0]?.id || '',
       status: taskStatus,
       type: taskType,
       dueDate: taskDueDate || todayStr,
@@ -455,20 +472,24 @@ export const HomeTab: React.FC<HomeTabProps> = ({
             >
               Todas ({tasks.length})
             </button>
-            {courses.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setSelectedCourseFilter(c.id)}
-                className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all shrink-0 flex items-center gap-1.5 ${
-                  selectedCourseFilter === c.id
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'bg-[#efeeea] dark:bg-[#262626] text-[#787774] dark:text-[#9b9a97] hover:text-[#37352f]'
-                }`}
-              >
-                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
-                <span>{c.code}</span>
-              </button>
-            ))}
+            {visibleCourses.map((c) => {
+              const count = tasks.filter((t) => t.courseId === c.id).length;
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => setSelectedCourseFilter(c.id)}
+                  className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all shrink-0 flex items-center gap-1.5 ${
+                    selectedCourseFilter === c.id
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-[#efeeea] dark:bg-[#262626] text-[#787774] dark:text-[#9b9a97] hover:text-[#37352f]'
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
+                  <span>{c.code}</span>
+                  <span className="text-[10px] opacity-70">({count})</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -1178,7 +1199,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                     onChange={(e) => setTaskCourseId(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg border border-[#e9e9e8] dark:border-[#333] bg-transparent focus:outline-none focus:border-blue-500 text-xs"
                   >
-                    {courses.map((c) => (
+                    {visibleCourses.map((c) => (
                       <option key={c.id} value={c.id} className="dark:bg-[#202020]">
                         {c.code} - {c.name}
                       </option>

@@ -61,13 +61,27 @@ function getFirebaseAdminApp() {
 
 // Helper para ler documento do estudante no Firestore
 async function getStudentDashboard(userId: string = DEFAULT_DASHBOARD_ID) {
+  const targetDoc = userId || DEFAULT_DASHBOARD_ID;
+
   try {
     getFirebaseAdminApp();
     const db = admin.firestore();
-    const docRef = db.collection('student_dashboards').doc(userId);
+    const docRef = db.collection('student_dashboards').doc(targetDoc);
     const snap = await docRef.get();
     if (snap.exists) {
-      return snap.data() || {};
+      const data = snap.data() || {};
+      if (data.courses && Array.isArray(data.courses) && data.courses.length > 0) {
+        return data;
+      }
+    }
+
+    // Se o documento do usuário específico não tiver matérias, tenta carregar de 'principal'
+    if (targetDoc !== DEFAULT_DASHBOARD_ID) {
+      const principalRef = db.collection('student_dashboards').doc(DEFAULT_DASHBOARD_ID);
+      const principalSnap = await principalRef.get();
+      if (principalSnap.exists) {
+        return principalSnap.data() || {};
+      }
     }
   } catch (err: any) {
     console.error('Erro ao ler Firestore via Admin SDK:', err?.message || err);
@@ -75,7 +89,7 @@ async function getStudentDashboard(userId: string = DEFAULT_DASHBOARD_ID) {
 
   // Fallback via Firestore REST API (público / token)
   try {
-    const url = `https://firestore.googleapis.com/v1/projects/${DEFAULT_PROJECT_ID}/databases/(default)/documents/student_dashboards/${userId}`;
+    const url = `https://firestore.googleapis.com/v1/projects/${DEFAULT_PROJECT_ID}/databases/(default)/documents/student_dashboards/${targetDoc}`;
     const res = await fetch(url);
     if (res.ok) {
       const json: any = await res.json();
@@ -90,16 +104,26 @@ async function getStudentDashboard(userId: string = DEFAULT_DASHBOARD_ID) {
 
 // Helper para salvar documento do estudante no Firestore
 async function saveStudentDashboard(userId: string = DEFAULT_DASHBOARD_ID, data: any) {
-  getFirebaseAdminApp();
-  const db = admin.firestore();
-  const docRef = db.collection('student_dashboards').doc(userId);
-  await docRef.set(
-    {
-      ...data,
-      updatedAt: new Date().toISOString(),
-    },
-    { merge: true }
-  );
+  const targetDoc = userId || DEFAULT_DASHBOARD_ID;
+  const payload = {
+    ...data,
+    updatedAt: new Date().toISOString(),
+  };
+
+  try {
+    getFirebaseAdminApp();
+    const db = admin.firestore();
+    const docRef = db.collection('student_dashboards').doc(targetDoc);
+    await docRef.set(payload, { merge: true });
+
+    // Mantém sempre sincronizado também no documento 'principal'
+    if (targetDoc !== DEFAULT_DASHBOARD_ID) {
+      const pRef = db.collection('student_dashboards').doc(DEFAULT_DASHBOARD_ID);
+      await pRef.set(payload, { merge: true });
+    }
+  } catch (err: any) {
+    console.error('Erro ao salvar no Firestore via Admin SDK:', err?.message || err);
+  }
 }
 
 function parseFirestoreFields(fields: any): any {
@@ -358,6 +382,327 @@ const MCP_TOOLS = [
         includeCompleted: {
           type: 'boolean',
           description: 'Se true, inclui também compromissos já concluídos. Padrão: false',
+        },
+        userId: {
+          type: 'string',
+          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+        },
+      },
+    },
+  },
+  {
+    name: 'create_course',
+    description:
+      'Cadastra uma nova disciplina ou matéria no Painel do Estudante e salva no banco de dados Firestore.',
+    inputSchema: {
+      type: 'object',
+      required: ['code', 'name'],
+      properties: {
+        code: {
+          type: 'string',
+          description: 'Código oficial da disciplina (ex: "ES680", "MC322", "MA111")',
+        },
+        name: {
+          type: 'string',
+          description: 'Nome completo da matéria (ex: "Engenharia de Software", "Cálculo I")',
+        },
+        professor: {
+          type: 'string',
+          description: 'Nome do professor(a) responsável (ex: "Profa. Cecília Baranauskas")',
+        },
+        schedule: {
+          type: 'string',
+          description: 'Dias e horários das aulas (ex: "Seg / Qua 14:00 - 16:00")',
+        },
+        roomOrLink: {
+          type: 'string',
+          description: 'Sala de aula física ou link de acesso (ex: "IC-301", "CB-02", "Google Meet")',
+        },
+        targetAverage: {
+          type: 'number',
+          description: 'Média alvo para aprovação (padrão: 7.0)',
+        },
+        semester: {
+          type: 'string',
+          description: 'Semestre letivo (ex: "1º Semestre", "2º Semestre"). Padrão: "1º Semestre"',
+        },
+        year: {
+          type: 'string',
+          description: 'Ano letivo (ex: "2026"). Padrão: "2026"',
+        },
+        color: {
+          type: 'string',
+          description: 'Cor em hexadecimal para identificação visual (ex: "#10b981", "#3b82f6", "#f59e0b", "#8b5cf6")',
+        },
+        userId: {
+          type: 'string',
+          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+        },
+      },
+    },
+  },
+  {
+    name: 'update_course',
+    description:
+      'Atualiza, edita ou renomeia os dados de uma disciplina existente diretamente no banco de dados (ex: renomear o nome da matéria, atualizar professor, sala, horários ou código — por exemplo atualizar ES680). Permite localizar a matéria pelo código atual (ex: "ES680"), nome ou ID.',
+    inputSchema: {
+      type: 'object',
+      required: ['courseQuery'],
+      properties: {
+        courseQuery: {
+          type: 'string',
+          description: 'Código da disciplina (ex: "ES680"), nome atual ou ID para localizar a matéria no banco de dados.',
+        },
+        name: {
+          type: 'string',
+          description: 'Novo nome da disciplina (ex: renomear para a denominação oficial correta)',
+        },
+        code: {
+          type: 'string',
+          description: 'Novo código da disciplina (ex: "ES680")',
+        },
+        professor: {
+          type: 'string',
+          description: 'Novo nome do professor(a)',
+        },
+        schedule: {
+          type: 'string',
+          description: 'Novos dias e horários das aulas',
+        },
+        roomOrLink: {
+          type: 'string',
+          description: 'Nova sala de aula ou link',
+        },
+        targetAverage: {
+          type: 'number',
+          description: 'Nova média alvo para aprovação',
+        },
+        inProgress: {
+          type: 'boolean',
+          description: 'true para matéria em andamento / cursando, false para concluída / trancada',
+        },
+        color: {
+          type: 'string',
+          description: 'Nova cor em hexadecimal',
+        },
+        userId: {
+          type: 'string',
+          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+        },
+      },
+    },
+  },
+  {
+    name: 'delete_course',
+    description:
+      'Exclui uma disciplina do Painel do Estudante e remove seus dados do banco de dados.',
+    inputSchema: {
+      type: 'object',
+      required: ['courseQuery'],
+      properties: {
+        courseQuery: {
+          type: 'string',
+          description: 'Código (ex: "ES680"), nome ou ID da disciplina que será removida.',
+        },
+        userId: {
+          type: 'string',
+          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+        },
+      },
+    },
+  },
+  {
+    name: 'add_course_grade',
+    description:
+      'Adiciona ou agenda uma prova/avaliação na disciplina especificada (ex: "P1", "P2", "Trabalho Final") com data, peso e nota.',
+    inputSchema: {
+      type: 'object',
+      required: ['courseQuery', 'name'],
+      properties: {
+        courseQuery: {
+          type: 'string',
+          description: 'Código da disciplina (ex: "ES680", "MC322") ou nome para associar a avaliação.',
+        },
+        name: {
+          type: 'string',
+          description: 'Nome da avaliação (ex: "P1 - Requisitos & Scrum", "P2 - Arquitetura", "Projeto Final")',
+        },
+        date: {
+          type: 'string',
+          description: 'Data da prova ou entrega no formato YYYY-MM-DD.',
+        },
+        grade: {
+          type: 'number',
+          description: 'Nota obtida (0 a 10). Se a prova for futura ou ainda não tiver nota, omita.',
+        },
+        maxGrade: {
+          type: 'number',
+          description: 'Nota máxima possível (padrão: 10)',
+        },
+        weight: {
+          type: 'number',
+          description: 'Peso da avaliação na média (padrão: 1)',
+        },
+        userId: {
+          type: 'string',
+          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+        },
+      },
+    },
+  },
+  {
+    name: 'delete_card',
+    description:
+      'Exclui definitivamente uma tarefa/card do quadro de estudos (Kanban) do Painel do Estudante.',
+    inputSchema: {
+      type: 'object',
+      required: ['taskQuery'],
+      properties: {
+        taskQuery: {
+          type: 'string',
+          description: 'Título ou trecho do nome da tarefa a ser excluída, ou ID da tarefa.',
+        },
+        userId: {
+          type: 'string',
+          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+        },
+      },
+    },
+  },
+  {
+    name: 'create_study_topic',
+    description:
+      'Adiciona um novo assunto ou tópico para revisão espaçada e resolução de exercícios semanais na aba de Recuperação Ativa.',
+    inputSchema: {
+      type: 'object',
+      required: ['name'],
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Nome do assunto ou conteúdo (ex: "Polimorfismo e Herança", "Diagramas C4 e UML", "Derivadas Implícitas")',
+        },
+        courseCode: {
+          type: 'string',
+          description: 'Código ou nome da disciplina associada (ex: "MC322", "ES680").',
+        },
+        question: {
+          type: 'string',
+          description: 'Pergunta ou conceito de fixação (flashcard rápido opcional).',
+        },
+        answer: {
+          type: 'string',
+          description: 'Resposta ou explicação resumida.',
+        },
+        targetScore: {
+          type: 'number',
+          description: 'Meta percentual de acerto para avanço de fase (padrão: 80%).',
+        },
+        userId: {
+          type: 'string',
+          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+        },
+      },
+    },
+  },
+  {
+    name: 'register_exercise_attempt',
+    description:
+      'Registra a resolução de uma lista de exercícios para um tópico da Recuperação Ativa, avaliando a meta de excelência (ex: 80%) e recalculando a próxima revisão semanal.',
+    inputSchema: {
+      type: 'object',
+      required: ['topicQuery', 'totalExercises', 'correctExercises'],
+      properties: {
+        topicQuery: {
+          type: 'string',
+          description: 'Nome ou trecho do tópico de estudo.',
+        },
+        totalExercises: {
+          type: 'number',
+          description: 'Total de questões resolvidas na lista (ex: 10).',
+        },
+        correctExercises: {
+          type: 'number',
+          description: 'Total de questões acertadas (ex: 8).',
+        },
+        listTitle: {
+          type: 'string',
+          description: 'Título ou identificador da lista (ex: "Lista 1 - Fixação", "Simulado P1").',
+        },
+        date: {
+          type: 'string',
+          description: 'Data da resolução no formato YYYY-MM-DD. Padrão: hoje.',
+        },
+        notes: {
+          type: 'string',
+          description: 'Comentários sobre acertos, dúvidas ou erros cometidos.',
+        },
+        userId: {
+          type: 'string',
+          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+        },
+      },
+    },
+  },
+  {
+    name: 'list_study_topics',
+    description:
+      'Lista os tópicos de estudo cadastrados na Recuperação Ativa, mostrando fase atual, aproveitamento percentual da última lista e próximas revisões.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        courseCode: {
+          type: 'string',
+          description: 'Filtrar por código ou nome de disciplina (opcional).',
+        },
+        dueOnly: {
+          type: 'boolean',
+          description: 'Se true, lista apenas tópicos que vencem hoje ou estão atrasados para revisão. Padrão: false',
+        },
+        userId: {
+          type: 'string',
+          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+        },
+      },
+    },
+  },
+  {
+    name: 'create_note',
+    description:
+      'Cria uma nova anotação, resumo ou dica no Caderno de Estudos (Notebook) do Painel.',
+    inputSchema: {
+      type: 'object',
+      required: ['title', 'content'],
+      properties: {
+        title: {
+          type: 'string',
+          description: 'Título da anotação.',
+        },
+        content: {
+          type: 'string',
+          description: 'Conteúdo da anotação em texto ou Markdown.',
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Tags ou categorias (ex: ["POO", "Resumo", "Dicas"]).',
+        },
+        userId: {
+          type: 'string',
+          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+        },
+      },
+    },
+  },
+  {
+    name: 'list_notes',
+    description:
+      'Lista as anotações do Caderno do Painel do Estudante com suporte a busca por palavra-chave.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        searchQuery: {
+          type: 'string',
+          description: 'Termo de busca para filtrar título, conteúdo ou tags.',
         },
         userId: {
           type: 'string',
@@ -726,6 +1071,411 @@ ${newApp.location ? `- **Local:** ${newApp.location}\n` : ''}
       out += `- [${a.completed ? 'X' : ' '}] **${a.title}** — Data: ${a.date}${a.time ? ` às ${a.time}` : ''}${a.location ? ` (${a.location})` : ''} | Categoria: ${a.category || 'pessoal'}\n`;
       if (a.notes) out += `  *Nota: ${a.notes}*\n`;
     });
+    return out;
+  }
+
+  // ==========================================================================
+  // DISCIPLINAS: CADASTRO, ATUALIZAÇÃO E EXCLUSÃO
+  // ==========================================================================
+  if (name === 'create_course') {
+    const dashboard = await getStudentDashboard(userId);
+    const courses: any[] = dashboard.courses || [];
+
+    const code = String(args.code || '').trim().toUpperCase();
+    const courseName = String(args.name || '').trim();
+
+    if (!code || !courseName) {
+      return `❌ Código e Nome da disciplina são obrigatórios para cadastro.`;
+    }
+
+    const existingIndex = courses.findIndex(
+      (c) => c.code?.toUpperCase() === code || c.name?.toLowerCase() === courseName.toLowerCase()
+    );
+
+    if (existingIndex !== -1) {
+      return `⚠️ Já existe uma disciplina cadastrada com o código **${code}** ou nome **"${courses[existingIndex].name}"**. Use a ferramenta \`update_course\` caso deseje renomear ou alterar seus dados.`;
+    }
+
+    const newCourse = {
+      id: `course-${Date.now()}`,
+      code,
+      name: courseName,
+      professor: args.professor ? String(args.professor).trim() : '',
+      schedule: args.schedule ? String(args.schedule).trim() : '',
+      roomOrLink: args.roomOrLink ? String(args.roomOrLink).trim() : '',
+      semester: args.semester ? String(args.semester).trim() : '1º Semestre',
+      year: args.year ? String(args.year).trim() : String(new Date().getFullYear()),
+      inProgress: args.inProgress !== false,
+      color: args.color ? String(args.color).trim() : '#10b981',
+      targetAverage: args.targetAverage ? Number(args.targetAverage) : 7.0,
+      grades: [],
+      syllabus: [],
+    };
+
+    const updatedCourses = [...courses, newCourse];
+    await saveStudentDashboard(userId, { ...dashboard, courses: updatedCourses });
+
+    return `✅ **Disciplina Cadastrada com Sucesso no Painel do Estudante!**
+
+- **Código:** ${newCourse.code}
+- **Nome:** ${newCourse.name}
+${newCourse.professor ? `- **Professor(a):** ${newCourse.professor}\n` : ''}
+${newCourse.schedule ? `- **Horário:** ${newCourse.schedule}\n` : ''}
+${newCourse.roomOrLink ? `- **Local:** ${newCourse.roomOrLink}\n` : ''}
+- **Semestre:** ${newCourse.semester} / ${newCourse.year}
+- **Status:** ${newCourse.inProgress ? 'Em Andamento (Ativa)' : 'Concluída'}
+
+*A disciplina foi salva diretamente no Firestore e já está disponível em todo o painel.*`;
+  }
+
+  if (name === 'update_course') {
+    const dashboard = await getStudentDashboard(userId);
+    const courses: any[] = dashboard.courses || [];
+    const query = String(args.courseQuery || '').trim().toLowerCase();
+
+    const courseIndex = courses.findIndex(
+      (c) =>
+        c.code?.toLowerCase() === query ||
+        c.id?.toLowerCase() === query ||
+        c.name?.toLowerCase().includes(query) ||
+        c.code?.toLowerCase().includes(query)
+    );
+
+    if (courseIndex === -1) {
+      return `❌ Não encontrei nenhuma disciplina correspondente a "${args.courseQuery}". Use a ferramenta \`list_courses\` para ver as matérias existentes no banco.`;
+    }
+
+    const course = { ...courses[courseIndex] };
+    const oldName = course.name;
+    const oldCode = course.code;
+
+    if (args.name) course.name = String(args.name).trim();
+    if (args.code) course.code = String(args.code).trim().toUpperCase();
+    if (args.professor !== undefined) course.professor = String(args.professor).trim();
+    if (args.schedule !== undefined) course.schedule = String(args.schedule).trim();
+    if (args.roomOrLink !== undefined) course.roomOrLink = String(args.roomOrLink).trim();
+    if (args.targetAverage !== undefined) course.targetAverage = Number(args.targetAverage);
+    if (args.color !== undefined) course.color = String(args.color).trim();
+    if (args.inProgress !== undefined) course.inProgress = Boolean(args.inProgress);
+
+    courses[courseIndex] = course;
+    await saveStudentDashboard(userId, { ...dashboard, courses });
+
+    return `✅ **Disciplina Atualizada / Renomeada com Sucesso!**
+
+- **Código:** ${course.code} ${oldCode !== course.code ? `*(anteriormente: "${oldCode}")*` : ''}
+- **Nome Oficial:** ${course.name} ${oldName !== course.name ? `*(anteriormente: "${oldName}")*` : ''}
+${course.professor ? `- **Professor(a):** ${course.professor}\n` : ''}
+${course.schedule ? `- **Horário:** ${course.schedule}\n` : ''}
+${course.roomOrLink ? `- **Local:** ${course.roomOrLink}\n` : ''}
+- **Status:** ${course.inProgress ? 'Em Andamento' : 'Concluída'}
+
+*A alteração foi persistida no Firestore e já está sincronizada em todo o painel.*`;
+  }
+
+  if (name === 'delete_course') {
+    const dashboard = await getStudentDashboard(userId);
+    const courses: any[] = dashboard.courses || [];
+    const query = String(args.courseQuery || '').trim().toLowerCase();
+
+    const courseIndex = courses.findIndex(
+      (c) =>
+        c.code?.toLowerCase() === query ||
+        c.id?.toLowerCase() === query ||
+        c.name?.toLowerCase().includes(query)
+    );
+
+    if (courseIndex === -1) {
+      return `❌ Não encontrei nenhuma disciplina com "${args.courseQuery}" para excluir.`;
+    }
+
+    const removed = courses[courseIndex];
+    const updatedCourses = courses.filter((_, idx) => idx !== courseIndex);
+    await saveStudentDashboard(userId, { ...dashboard, courses: updatedCourses });
+
+    return `🗑️ **Disciplina Removida!**
+A matéria **[${removed.code}] ${removed.name}** foi excluída com sucesso do painel e do banco de dados.`;
+  }
+
+  if (name === 'add_course_grade') {
+    const dashboard = await getStudentDashboard(userId);
+    const courses: any[] = dashboard.courses || [];
+    const query = String(args.courseQuery || '').trim().toLowerCase();
+
+    const courseIndex = courses.findIndex(
+      (c) =>
+        c.code?.toLowerCase() === query ||
+        c.id?.toLowerCase() === query ||
+        c.name?.toLowerCase().includes(query)
+    );
+
+    if (courseIndex === -1) {
+      return `❌ Não encontrei nenhuma disciplina com "${args.courseQuery}".`;
+    }
+
+    const course = { ...courses[courseIndex] };
+    const newGrade = {
+      id: `g-${Date.now()}`,
+      name: String(args.name).trim(),
+      grade: args.grade !== undefined && args.grade !== null && args.grade !== '' ? Number(args.grade) : null,
+      maxGrade: args.maxGrade ? Number(args.maxGrade) : 10,
+      weight: args.weight ? Number(args.weight) : 1,
+      date: args.date ? String(args.date).trim() : undefined,
+    };
+
+    course.grades = [...(course.grades || []), newGrade];
+    courses[courseIndex] = course;
+    await saveStudentDashboard(userId, { ...dashboard, courses });
+
+    return `📝 **Avaliação Adicionada em [${course.code}] ${course.name}!**
+
+- **Nome da Avaliação:** ${newGrade.name}
+${newGrade.date ? `- **Data:** ${newGrade.date}\n` : ''}
+${newGrade.grade !== null ? `- **Nota Lançada:** ${newGrade.grade} / ${newGrade.maxGrade} (Peso: ${newGrade.weight})\n` : '- **Status:** Agendada (Nota pendente)\n'}
+
+*A prova foi agendada e salva no banco de dados Firestore.*`;
+  }
+
+  // ==========================================================================
+  // EXCLUSÃO DE CARDS / TAREFAS
+  // ==========================================================================
+  if (name === 'delete_card') {
+    const dashboard = await getStudentDashboard(userId);
+    const tasks: any[] = dashboard.tasks || [];
+    const query = String(args.taskQuery || '').trim().toLowerCase();
+
+    const taskIndex = tasks.findIndex(
+      (t) => t.id === args.taskQuery || t.name?.toLowerCase().includes(query)
+    );
+
+    if (taskIndex === -1) {
+      return `❌ Não encontrei nenhuma tarefa com "${args.taskQuery}" para excluir.`;
+    }
+
+    const removed = tasks[taskIndex];
+    const updatedTasks = tasks.filter((_, idx) => idx !== taskIndex);
+    await saveStudentDashboard(userId, { ...dashboard, tasks: updatedTasks });
+
+    return `🗑️ **Tarefa Excluída!**
+A tarefa **"${removed.name}"** foi removida definitivamente do seu quadro de tarefas e do banco de dados.`;
+  }
+
+  // ==========================================================================
+  // RECUPERAÇÃO ATIVA & REVISÕES ESPAÇADAS
+  // ==========================================================================
+  if (name === 'create_study_topic') {
+    const dashboard = await getStudentDashboard(userId);
+    const topics: any[] = dashboard.topics || [];
+    const courses: any[] = dashboard.courses || [];
+
+    let courseId = '';
+    let matchedCourse: any = null;
+    if (args.courseCode) {
+      const q = String(args.courseCode).trim().toLowerCase();
+      matchedCourse = courses.find((c) => c.code?.toLowerCase().includes(q) || c.name?.toLowerCase().includes(q));
+      if (matchedCourse) courseId = matchedCourse.id;
+    }
+    if (!courseId && courses.length > 0) {
+      matchedCourse = courses[0];
+      courseId = matchedCourse.id;
+    }
+
+    const newTopic = {
+      id: `topic-${Date.now()}`,
+      name: String(args.name).trim(),
+      courseId,
+      question: args.question ? String(args.question).trim() : undefined,
+      answer: args.answer ? String(args.answer).trim() : undefined,
+      stage: 0,
+      adaptive: true,
+      lastReviewDate: undefined,
+      nextReviewDate: todayStr,
+      attempts: [],
+      targetScore: args.targetScore ? Number(args.targetScore) : 80,
+    };
+
+    const updatedTopics = [...topics, newTopic];
+    await saveStudentDashboard(userId, { ...dashboard, topics: updatedTopics });
+
+    return `🧠 **Assunto Cadastrado na Recuperação Ativa!**
+
+- **Tópico:** ${newTopic.name}
+- **Disciplina:** ${matchedCourse ? `${matchedCourse.code} (${matchedCourse.name})` : 'Geral'}
+- **Fase Inicial:** Fase 1 (Revisão em 1 semana)
+- **Meta de Excelência:** ${newTopic.targetScore}%
+- **Primeira Revisão:** ${newTopic.nextReviewDate} (Hoje)
+${newTopic.question ? `- **Pergunta de Fixação:** ${newTopic.question}\n` : ''}
+
+*O assunto foi salvo no Firestore e já está disponível na aba de Recuperação Ativa & Revisões.*`;
+  }
+
+  if (name === 'register_exercise_attempt') {
+    const dashboard = await getStudentDashboard(userId);
+    const topics: any[] = dashboard.topics || [];
+    const query = String(args.topicQuery || '').trim().toLowerCase();
+
+    const topicIndex = topics.findIndex(
+      (t) => t.id === args.topicQuery || t.name?.toLowerCase().includes(query)
+    );
+
+    if (topicIndex === -1) {
+      return `❌ Não encontrei nenhum tópico de estudo com "${args.topicQuery}". Use \`list_study_topics\` para ver os assuntos disponíveis.`;
+    }
+
+    const topic = { ...topics[topicIndex] };
+    const total = Math.max(1, Number(args.totalExercises) || 1);
+    const correct = Math.max(0, Math.min(total, Number(args.correctExercises) || 0));
+    const scorePct = Number(((correct / total) * 100).toFixed(1));
+    const target = topic.targetScore || 80;
+    const passed = scorePct >= target;
+
+    const newAttempt = {
+      id: `attempt-${Date.now()}`,
+      date: args.date ? String(args.date).trim() : todayStr,
+      listTitle: args.listTitle ? String(args.listTitle).trim() : `Lista de Exercícios`,
+      totalExercises: total,
+      correctExercises: correct,
+      scorePercentage: scorePct,
+      passed,
+      notes: args.notes ? String(args.notes).trim() : undefined,
+    };
+
+    const PHASES = [
+      { stage: 0, label: 'Fase 1 (1 semana)', days: 7 },
+      { stage: 1, label: 'Fase 2 (2 semanas)', days: 14 },
+      { stage: 2, label: 'Fase 3 (4 semanas)', days: 28 },
+      { stage: 3, label: 'Fase 4 (Dominado)', days: 60 },
+    ];
+
+    let nextStage = topic.stage || 0;
+    let daysToAdd = 7;
+    if (passed) {
+      nextStage = Math.min(nextStage + 1, PHASES.length - 1);
+      daysToAdd = PHASES[nextStage].days;
+    } else {
+      daysToAdd = 3; // Reforço necessário em 3 dias
+    }
+
+    const nextDateObj = new Date(new Date(newAttempt.date).getTime() + daysToAdd * 86400000);
+    const nextReviewDate = nextDateObj.toISOString().split('T')[0];
+
+    topic.stage = nextStage;
+    topic.lastReviewDate = newAttempt.date;
+    topic.nextReviewDate = nextReviewDate;
+    topic.attempts = [...(topic.attempts || []), newAttempt];
+
+    topics[topicIndex] = topic;
+    await saveStudentDashboard(userId, { ...dashboard, topics });
+
+    return `🎯 **Lista de Exercícios Registrada com Sucesso!**
+
+- **Assunto:** ${topic.name}
+- **Aproveitamento:** ${correct}/${total} (${scorePct}%)
+- **Resultado:** ${passed ? `✅ Aprovado na Meta (Meta: ${target}%)` : `⚠️ Abaixo da Meta (Meta: ${target}%)`}
+- **Nova Fase:** ${PHASES[nextStage].label}
+- **Próxima Revisão Agendada:** ${nextReviewDate} ${passed ? `(daqui a ${daysToAdd} dias)` : '(reforço em 3 dias)'}
+${newAttempt.notes ? `- **Observações:** ${newAttempt.notes}\n` : ''}
+
+*Histórico salvo diretamente no Firestore e refletido nas estatísticas do painel.*`;
+  }
+
+  if (name === 'list_study_topics') {
+    const dashboard = await getStudentDashboard(userId);
+    const topics: any[] = dashboard.topics || [];
+    const courses: any[] = dashboard.courses || [];
+
+    if (topics.length === 0) {
+      return `Nenhum assunto de estudo cadastrado na Recuperação Ativa. Use a ferramenta \`create_study_topic\` para cadastrar assuntos!`;
+    }
+
+    let filtered = topics;
+    if (args.courseCode) {
+      const q = String(args.courseCode).trim().toLowerCase();
+      const course = courses.find((c) => c.code?.toLowerCase().includes(q) || c.name?.toLowerCase().includes(q));
+      if (course) {
+        filtered = filtered.filter((t) => t.courseId === course.id);
+      }
+    }
+    if (args.dueOnly) {
+      filtered = filtered.filter((t) => t.nextReviewDate <= todayStr);
+    }
+
+    const PHASES_LABELS = ['Fase 1 (1 semana)', 'Fase 2 (2 semanas)', 'Fase 3 (4 semanas)', 'Dominado (60 dias)'];
+
+    let out = `# 🧠 Assuntos & Revisões Espaçadas (${filtered.length})\n\n`;
+    filtered.forEach((t) => {
+      const course = courses.find((c) => c.id === t.courseId);
+      const isDue = t.nextReviewDate <= todayStr;
+      const lastAttempt = t.attempts?.slice(-1)[0];
+      const stageLabel = PHASES_LABELS[t.stage] || `Fase ${t.stage}`;
+
+      out += `### ${isDue ? '🚨' : '📌'} ${t.name} (${course ? course.code : 'Geral'})\n`;
+      out += `- **Fase Atual:** ${stageLabel}\n`;
+      out += `- **Próxima Revisão:** ${t.nextReviewDate} ${isDue ? '**[HOJE / ATRASADA]**' : ''}\n`;
+      if (lastAttempt) {
+        out += `- **Último Desempenho:** ${lastAttempt.scorePercentage}% (${lastAttempt.correctExercises}/${lastAttempt.totalExercises}) - ${lastAttempt.passed ? 'Aprovado' : 'Reforço'}\n`;
+      }
+      out += `\n`;
+    });
+
+    return out;
+  }
+
+  // ==========================================================================
+  // CADERNO DE ANOTAÇÕES (NOTEBOOK)
+  // ==========================================================================
+  if (name === 'create_note') {
+    const dashboard = await getStudentDashboard(userId);
+    const notes: any[] = dashboard.notes || [];
+
+    const newNote = {
+      id: `note-${Date.now()}`,
+      title: String(args.title).trim(),
+      content: String(args.content).trim(),
+      tags: Array.isArray(args.tags) && args.tags.length > 0 ? args.tags : ['Geral'],
+      createdAt: todayStr,
+    };
+
+    const updatedNotes = [newNote, ...notes];
+    await saveStudentDashboard(userId, { ...dashboard, notes: updatedNotes });
+
+    return `📓 **Anotação Criada com Sucesso no Caderno!**
+
+- **Título:** ${newNote.title}
+- **Tags:** ${newNote.tags.join(', ')}
+- **Data:** ${newNote.createdAt}
+
+*Anotação salva e sincronizada no Painel do Estudante.*`;
+  }
+
+  if (name === 'list_notes') {
+    const dashboard = await getStudentDashboard(userId);
+    const notes: any[] = dashboard.notes || [];
+
+    if (notes.length === 0) {
+      return `Nenhuma anotação cadastrada no Caderno de Estudos.`;
+    }
+
+    let filtered = notes;
+    if (args.searchQuery) {
+      const q = String(args.searchQuery).trim().toLowerCase();
+      filtered = filtered.filter(
+        (n) =>
+          n.title?.toLowerCase().includes(q) ||
+          n.content?.toLowerCase().includes(q) ||
+          (n.tags || []).some((tag: string) => tag.toLowerCase().includes(q))
+      );
+    }
+
+    let out = `# 📓 Anotações do Caderno (${filtered.length})\n\n`;
+    filtered.forEach((n) => {
+      out += `### 📄 ${n.title} (${n.createdAt || todayStr})\n`;
+      if (n.tags && n.tags.length > 0) {
+        out += `*Tags: ${n.tags.map((t: string) => `#${t}`).join(' ')}*\n\n`;
+      }
+      out += `${n.content}\n\n---\n\n`;
+    });
+
     return out;
   }
 

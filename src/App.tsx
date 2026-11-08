@@ -283,11 +283,9 @@ export const App: React.FC = () => {
     return () => unsub();
   }, []);
 
-  // Real-time Firestore sync listener (apenas para usuário autorizado)
+  // Real-time Firestore sync listener: sincroniza com o UID autenticado ou com 'principal' (fallback)
   useEffect(() => {
-    if (!firebaseUser || !isEmailAllowed(firebaseUser.email)) return;
-
-    const docId = firebaseUser.uid;
+    const docId = firebaseUser && isEmailAllowed(firebaseUser.email) ? firebaseUser.uid : 'principal';
     const unsub = subscribeToFirestore(docId, (data, metadata) => {
       if (!data) return;
       // Ignora evento disparado pelas nossas próprias alterações em andamento locais
@@ -329,6 +327,117 @@ export const App: React.FC = () => {
 
     return () => unsub();
   }, [firebaseUser]);
+
+  // Captura e importa dados vindos de links gerados pelo Gemini / Gmail
+  const hasProcessedUrlRef = React.useRef(false);
+  useEffect(() => {
+    if (authLoading) return;
+    if (hasProcessedUrlRef.current) return;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const action =
+      urlParams.get('action') ||
+      (urlParams.get('add_bill')
+        ? 'add_bill'
+        : urlParams.get('add_task')
+        ? 'add_task'
+        : urlParams.get('add_appointment')
+        ? 'add_appointment'
+        : null);
+
+    if (!action) return;
+    hasProcessedUrlRef.current = true;
+
+    if (action === 'add_bill') {
+      const title = urlParams.get('title') || 'Nova Conta';
+      const amountStr = urlParams.get('amount') || '0';
+      const amount = parseFloat(amountStr.replace(',', '.')) || 0;
+      const dueDate =
+        urlParams.get('dueDate') ||
+        urlParams.get('due') ||
+        new Date().toISOString().split('T')[0];
+      const category = (urlParams.get('category') as any) || 'servicos';
+      const barcodeOrLink =
+        urlParams.get('barcode') || urlParams.get('link') || '';
+      const notes = urlParams.get('notes') || 'Adicionado via Gemini / Gmail';
+
+      const newBill: PersonalBill = {
+        id: `bill-${Date.now()}`,
+        title,
+        amount,
+        dueDate,
+        category,
+        status: 'pending',
+        barcodeOrLink,
+        notes,
+      };
+
+      handleAddBill(newBill);
+      setActiveTab('personal');
+      showToast(
+        'success',
+        'Conta importada do Gemini!',
+        `"${title}" (R$ ${amount.toFixed(2)}) foi adicionada com sucesso.`
+      );
+    } else if (action === 'add_task') {
+      const name = urlParams.get('title') || urlParams.get('name') || 'Nova Tarefa';
+      const courseId =
+        urlParams.get('courseId') || courses[0]?.id || 'geral';
+      const dueDate =
+        urlParams.get('dueDate') ||
+        urlParams.get('date') ||
+        new Date().toISOString().split('T')[0];
+      const type = (urlParams.get('type') as any) || 'Trabalho';
+      const notes = urlParams.get('notes') || 'Adicionado via Gemini / Gmail';
+
+      const newTask: Task = {
+        id: `task-${Date.now()}`,
+        name,
+        courseId,
+        dueDate,
+        type,
+        status: 'todo',
+        notes,
+      };
+
+      handleAddTask(newTask);
+      setActiveTab('tasks');
+      showToast(
+        'success',
+        'Tarefa importada do Gemini!',
+        `"${name}" foi adicionada ao seu quadro de tarefas.`
+      );
+    } else if (action === 'add_appointment') {
+      const title = urlParams.get('title') || 'Novo Compromisso';
+      const date =
+        urlParams.get('date') || new Date().toISOString().split('T')[0];
+      const time = urlParams.get('time') || '';
+      const location = urlParams.get('location') || '';
+      const notes = urlParams.get('notes') || 'Adicionado via Gemini / Gmail';
+
+      const newApp: PersonalAppointment = {
+        id: `app-${Date.now()}`,
+        title,
+        date,
+        time,
+        location,
+        category: 'pessoal',
+        completed: false,
+        notes,
+      };
+
+      handleAddAppointment(newApp);
+      setActiveTab('personal');
+      showToast(
+        'success',
+        'Compromisso importado do Gemini!',
+        `"${title}" foi adicionado aos seus compromissos.`
+      );
+    }
+
+    // Limpa a URL para evitar reimportar ao recarregar a página
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }, [authLoading, courses]);
 
   // Quick stats
   const todayStr = new Date().toISOString().split('T')[0];
@@ -428,7 +537,7 @@ export const App: React.FC = () => {
       id: 'courses',
       label: 'Disciplinas',
       icon: BookOpen,
-      count: activeCoursesCount,
+      count: courses.length > 0 ? courses.length : undefined,
     },
     {
       id: 'tasks',

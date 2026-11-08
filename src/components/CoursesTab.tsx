@@ -34,7 +34,7 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
   onDeleteCourse,
 }) => {
   const { showToast, showConfirm } = useNotification();
-  const [filter, setFilter] = useState<'all' | 'in_progress'>('in_progress');
+  const [filter, setFilter] = useState<'all' | 'in_progress'>('all');
   const [semesterFilter, setSemesterFilter] = useState<string>('all');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);

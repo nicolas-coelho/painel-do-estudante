@@ -80,6 +80,23 @@ export const ActiveRecallTab: React.FC<ActiveRecallTabProps> = ({
   const [newTopicQuestion, setNewTopicQuestion] = useState('');
   const [newTopicAnswer, setNewTopicAnswer] = useState('');
 
+  // Acompanha estritamente as disciplinas cadastradas em andamento (ou com tópicos associados)
+  const visibleCourses = courses.filter(
+    (c) => c.inProgress !== false || topics.some((tp) => tp.courseId === c.id)
+  );
+
+  React.useEffect(() => {
+    if (selectedCourseId !== 'all' && !visibleCourses.some((c) => c.id === selectedCourseId)) {
+      setSelectedCourseId('all');
+    }
+  }, [selectedCourseId, visibleCourses]);
+
+  React.useEffect(() => {
+    if (!newTopicCourseId || !visibleCourses.some((c) => c.id === newTopicCourseId)) {
+      setNewTopicCourseId(visibleCourses[0]?.id || courses[0]?.id || '');
+    }
+  }, [visibleCourses]);
+
   // Form: Registro de Lista de Exercícios
   const [listTitle, setListTitle] = useState('');
   const [listDate, setListDate] = useState(new Date().toISOString().split('T')[0]);
@@ -445,7 +462,7 @@ export const ActiveRecallTab: React.FC<ActiveRecallTabProps> = ({
           >
             Todas ({topics.length})
           </button>
-          {courses.map((c) => {
+          {visibleCourses.map((c) => {
             const count = topics.filter((t) => t.courseId === c.id).length;
             const isSelected = selectedCourseId === c.id;
             return (
@@ -1001,7 +1018,7 @@ export const ActiveRecallTab: React.FC<ActiveRecallTabProps> = ({
             </p>
 
             <div className="space-y-4 max-h-80 overflow-y-auto pr-1">
-              {courses.map((course) => {
+              {visibleCourses.map((course) => {
                 const syllabusItems = course.syllabus || [];
                 if (syllabusItems.length === 0) return null;
 
@@ -1106,7 +1123,7 @@ export const ActiveRecallTab: React.FC<ActiveRecallTabProps> = ({
                   onChange={(e) => setNewTopicCourseId(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-[#e9e9e8] dark:border-[#333] bg-[#fbfbfa] dark:bg-[#191919] text-[#37352f] dark:text-[#ececed] focus:outline-none focus:border-purple-500 cursor-pointer"
                 >
-                  {courses.map((c) => (
+                  {visibleCourses.map((c) => (
                     <option key={c.id} value={c.id} className="dark:bg-[#202020]">
                       {c.code} - {c.name}
                     </option>

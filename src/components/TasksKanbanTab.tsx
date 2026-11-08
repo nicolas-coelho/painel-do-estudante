@@ -24,13 +24,32 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverColId, setDragOverColId] = useState<TaskStatus | null>(null);
 
+  // Acompanha estritamente as disciplinas cadastradas em andamento (ou com tarefas atribuídas)
+  const visibleCourses = courses.filter(
+    (c) => c.inProgress !== false || tasks.some((t) => t.courseId === c.id)
+  );
+
+  // Se a disciplina selecionada foi removida ou não está mais visível, volta para 'all'
+  React.useEffect(() => {
+    if (selectedCourse !== 'all' && !visibleCourses.some((c) => c.id === selectedCourse)) {
+      setSelectedCourse('all');
+    }
+  }, [selectedCourse, visibleCourses]);
+
   // New task form state
   const [name, setName] = useState('');
-  const [courseId, setCourseId] = useState(courses[0]?.id || '');
+  const [courseId, setCourseId] = useState(visibleCourses[0]?.id || courses[0]?.id || '');
   const [status, setStatus] = useState<TaskStatus>('todo');
   const [type, setType] = useState<TaskType>('Trabalho');
   const [dueDate, setDueDate] = useState('');
   const [notes, setNotes] = useState('');
+
+  // Mantém o select sincronizado com a primeira disciplina disponível se mudar
+  React.useEffect(() => {
+    if (!courseId || !visibleCourses.some((c) => c.id === courseId)) {
+      setCourseId(visibleCourses[0]?.id || courses[0]?.id || '');
+    }
+  }, [visibleCourses]);
 
   const filteredTasks = tasks.filter(
     (t) => selectedCourse === 'all' || t.courseId === selectedCourse
@@ -49,7 +68,7 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
     const newTask: Task = {
       id: `task-${Date.now()}`,
       name: name.trim(),
-      courseId: courseId || courses[0]?.id || '',
+      courseId: courseId || visibleCourses[0]?.id || courses[0]?.id || '',
       status,
       type,
       dueDate: dueDate || new Date().toISOString().split('T')[0],
@@ -137,20 +156,24 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
           >
             Todas ({tasks.length})
           </button>
-          {courses.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => setSelectedCourse(c.id)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all shrink-0 flex items-center gap-1.5 ${
-                selectedCourse === c.id
-                  ? 'bg-blue-600 text-white shadow'
-                  : 'bg-[#efeeea] dark:bg-[#2a2a2a] text-[#787774] dark:text-[#9b9a97] hover:text-[#37352f]'
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
-              <span>{c.code}</span>
-            </button>
-          ))}
+          {visibleCourses.map((c) => {
+            const count = tasks.filter((t) => t.courseId === c.id).length;
+            return (
+              <button
+                key={c.id}
+                onClick={() => setSelectedCourse(c.id)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all shrink-0 flex items-center gap-1.5 ${
+                  selectedCourse === c.id
+                    ? 'bg-blue-600 text-white shadow'
+                    : 'bg-[#efeeea] dark:bg-[#2a2a2a] text-[#787774] dark:text-[#9b9a97] hover:text-[#37352f]'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
+                <span>{c.code}</span>
+                <span className="text-[10px] opacity-70">({count})</span>
+              </button>
+            );
+          })}
         </div>
 
         <button
@@ -364,7 +387,7 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
                     onChange={(e) => setCourseId(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg border border-[#e9e9e8] dark:border-[#333] bg-transparent focus:outline-none focus:border-blue-500"
                   >
-                    {courses.map((c) => (
+                    {visibleCourses.map((c) => (
                       <option key={c.id} value={c.id} className="dark:bg-[#202020]">
                         {c.code} - {c.name}
                       </option>

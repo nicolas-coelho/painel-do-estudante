@@ -80,18 +80,6 @@ export const initialCourses: Course[] = [
       { id: 's13', title: '4. Integrais Definidas e Indefinidas', completed: false },
     ],
   },
-  {
-    id: 'course-4',
-    code: 'F107',
-    name: 'Física Geral I',
-    professor: 'Prof. Newton Silva',
-    schedule: 'Sex 10:00 - 12:00',
-    roomOrLink: 'IFGW Auditório',
-    semester: '1º Semestre',
-    year: '2026',
-    inProgress: false,
-    color: '#8b5cf6',
-  },
 ];
 
 const today = new Date().toISOString().split('T')[0];
