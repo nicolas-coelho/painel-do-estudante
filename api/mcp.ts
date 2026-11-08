@@ -127,12 +127,15 @@ async function saveStudentDashboard(userId: string = DEFAULT_DASHBOARD_ID, data:
     }
   };
 
-  // Salva no documento alvo
-  await saveToDoc(targetDoc);
+  // Salva no documento alvo e espelha em todos os identificadores ativos do estudante
+  const docsToUpdate = new Set<string>([
+    targetDoc,
+    DEFAULT_DASHBOARD_ID,
+    'Mu75zw4F5je3c9TfbJaUE0zIm1z2',
+  ]);
 
-  // Mantém sempre sincronizado também no documento 'principal'
-  if (targetDoc !== DEFAULT_DASHBOARD_ID) {
-    await saveToDoc(DEFAULT_DASHBOARD_ID);
+  for (const docName of docsToUpdate) {
+    await saveToDoc(docName);
   }
 }
 
