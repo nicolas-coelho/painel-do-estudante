@@ -1538,6 +1538,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           name: 'explicar_rotina',
           description: 'Pede ao Gemini para explicar detalhadamente a rotina de hoje e prioridades.',
         },
+        {
+          name: 'gerenciar_disciplinas',
+          description: 'Revisa, renomeia ou cadastra disciplinas no banco de dados Firestore.',
+        },
+        {
+          name: 'revisao_ativa_semanal',
+          description: 'Verifica assuntos e revisões espaçadas de listas de exercícios com meta de 80%.',
+        },
       ],
       usage: {
         geminiConfig: {
@@ -1639,6 +1647,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               description: 'Pede ao Gemini para analisar a rotina e montar um plano de estudos eficiente para o dia.',
               arguments: [],
             },
+            {
+              name: 'gerenciar_disciplinas',
+              description: 'Pede ao Gemini para revisar as matérias cadastradas, renomear códigos/nomes ou cadastrar novas disciplinas.',
+              arguments: [],
+            },
+            {
+              name: 'revisao_ativa_semanal',
+              description: 'Pede ao Gemini para verificar os tópicos da Recuperação Ativa e organizar as listas de exercícios de hoje.',
+              arguments: [],
+            },
           ],
         });
       }
@@ -1655,6 +1673,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 content: {
                   type: 'text',
                   text: 'Por favor, consulte minha rotina no Painel do Estudante usando a ferramenta "get_study_routine", me explique as principais prioridades e entregas de hoje, aponte prazos urgentes ou provas próximas e elabore um cronograma sugerido para eu estudar com tranquilidade.',
+                },
+              },
+            ],
+          });
+        }
+        if (promptName === 'gerenciar_disciplinas') {
+          return sendResult({
+            description: 'Revisão e atualização de disciplinas no banco de dados',
+            messages: [
+              {
+                role: 'user',
+                content: {
+                  type: 'text',
+                  text: 'Por favor, liste minhas disciplinas com "list_courses". Se alguma disciplina estiver com nome desatualizado ou código diferente do oficial (como ES680), use a ferramenta "update_course" para renomear e atualizar os dados no banco de dados. Se faltar alguma matéria do semestre, use "create_course" para cadastrar.',
+                },
+              },
+            ],
+          });
+        }
+        if (promptName === 'revisao_ativa_semanal') {
+          return sendResult({
+            description: 'Organização de tópicos de estudo e listas de exercícios da semana',
+            messages: [
+              {
+                role: 'user',
+                content: {
+                  type: 'text',
+                  text: 'Consulte meus tópicos de estudo com "list_study_topics". Me diga quais assuntos vencem hoje ou necessitam de reforço, qual o percentual de acerto esperado (meta de 80%) e monte uma sugestão de resolução de lista para hoje.',
                 },
               },
             ],
