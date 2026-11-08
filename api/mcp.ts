@@ -1,108 +1,98 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import admin from 'firebase-admin';
 
 // ============================================================================
-// CONFIGURAÇÃO DO FIREBASE ADMIN
+// CONFIGURAÇÃO DO FIRESTORE (COMUNICAÇÃO DIRETA VIA REST API)
 // ============================================================================
 const DEFAULT_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'painel-estudante-8b2c';
 const DEFAULT_DASHBOARD_ID = process.env.DEFAULT_DASHBOARD_ID || 'principal';
 
-function getFirebaseAdminApp() {
-  if (admin.apps.length > 0) {
-    return admin.apps[0]!;
+function toFirestoreFields(obj: any): any {
+  const fields: any = {};
+  for (const [k, v] of Object.entries(obj || {})) {
+    fields[k] = toFirestoreValue(v);
   }
-
-  // 1. Tentar carregar de FIREBASE_SERVICE_ACCOUNT (JSON string ou base64)
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    try {
-      let raw = process.env.FIREBASE_SERVICE_ACCOUNT.trim();
-      if (!raw.startsWith('{')) {
-        raw = Buffer.from(raw, 'base64').toString('utf-8');
-      }
-      const serviceAccount = JSON.parse(raw);
-      return admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-        projectId: serviceAccount.project_id || DEFAULT_PROJECT_ID,
-      });
-    } catch (err) {
-      console.error('Erro ao ler FIREBASE_SERVICE_ACCOUNT:', err);
-    }
-  }
-
-  // 2. Tentar carregar de variáveis separadas
-  if (process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
-    try {
-      const privateKey = process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n');
-      return admin.initializeApp({
-        credential: admin.credential.cert({
-          projectId: DEFAULT_PROJECT_ID,
-          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-          privateKey,
-        }),
-        projectId: DEFAULT_PROJECT_ID,
-      });
-    } catch (err) {
-      console.error('Erro ao inicializar com client email e private key:', err);
-    }
-  }
-
-  // 3. Fallback para default application credentials
-  try {
-    return admin.initializeApp({
-      projectId: DEFAULT_PROJECT_ID,
-    });
-  } catch (err) {
-    console.warn('Aviso: Firebase Admin inicializado sem credenciais explícitas:', err);
-    return admin.initializeApp({
-      projectId: DEFAULT_PROJECT_ID,
-    });
-  }
+  return fields;
 }
 
-// Helper para ler documento do estudante no Firestore
+function toFirestoreValue(val: any): any {
+  if (val === null || val === undefined) return { nullValue: null };
+  if (typeof val === 'boolean') return { booleanValue: val };
+  if (typeof val === 'number') {
+    return Number.isInteger(val) ? { integerValue: String(val) } : { doubleValue: val };
+  }
+  if (typeof val === 'string') return { stringValue: val };
+  if (Array.isArray(val)) {
+    return { arrayValue: { values: val.map(toFirestoreValue) } };
+  }
+  if (typeof val === 'object') {
+    return { mapValue: { fields: toFirestoreFields(val) } };
+  }
+  return { stringValue: String(val) };
+}
+
+function parseFirestoreFields(fields: any): any {
+  const result: any = {};
+  for (const key of Object.keys(fields || {})) {
+    const val = fields[key];
+    if (!val) continue;
+    if (val.stringValue !== undefined) result[key] = val.stringValue;
+    else if (val.integerValue !== undefined) result[key] = Number(val.integerValue);
+    else if (val.doubleValue !== undefined) result[key] = Number(val.doubleValue);
+    else if (val.booleanValue !== undefined) result[key] = val.booleanValue;
+    else if (val.nullValue !== undefined) result[key] = null;
+    else if (val.arrayValue !== undefined) {
+      result[key] = (val.arrayValue.values || []).map((v: any) =>
+        v.mapValue ? parseFirestoreFields(v.mapValue.fields || {}) : (v.stringValue !== undefined ? v.stringValue : v)
+      );
+    } else if (val.mapValue !== undefined) {
+      result[key] = parseFirestoreFields(val.mapValue.fields || {});
+    }
+  }
+  return result;
+}
+
+// Helper para ler documento do estudante no Firestore via REST API
 async function getStudentDashboard(userId: string = DEFAULT_DASHBOARD_ID) {
   const targetDoc = userId || DEFAULT_DASHBOARD_ID;
 
-  try {
-    getFirebaseAdminApp();
-    const db = admin.firestore();
-    const docRef = db.collection('student_dashboards').doc(targetDoc);
-    const snap = await docRef.get();
-    if (snap.exists) {
-      const data = snap.data() || {};
-      if (data.courses && Array.isArray(data.courses) && data.courses.length > 0) {
-        return data;
+  const fetchDoc = async (docName: string) => {
+    try {
+      const url = `https://firestore.googleapis.com/v1/projects/${DEFAULT_PROJECT_ID}/databases/(default)/documents/student_dashboards/${docName}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const json: any = await res.json();
+        return parseFirestoreFields(json.fields || {});
       }
+    } catch (err) {
+      console.error(`Erro ao ler ${docName} via REST:`, err);
     }
+    return null;
+  };
 
-    // Se o documento do usuário específico não tiver matérias, tenta carregar de 'principal'
-    if (targetDoc !== DEFAULT_DASHBOARD_ID) {
-      const principalRef = db.collection('student_dashboards').doc(DEFAULT_DASHBOARD_ID);
-      const principalSnap = await principalRef.get();
-      if (principalSnap.exists) {
-        return principalSnap.data() || {};
-      }
+  let data = await fetchDoc(targetDoc);
+
+  // Se o documento específico estiver vazio ou sem matérias, tenta carregar de 'principal'
+  if ((!data || !data.courses || !Array.isArray(data.courses) || data.courses.length === 0) && targetDoc !== DEFAULT_DASHBOARD_ID) {
+    const principalData = await fetchDoc(DEFAULT_DASHBOARD_ID);
+    if (principalData) {
+      data = { ...principalData, ...data };
     }
-  } catch (err: any) {
-    console.error('Erro ao ler Firestore via Admin SDK:', err?.message || err);
   }
 
-  // Fallback via Firestore REST API (público / token)
-  try {
-    const url = `https://firestore.googleapis.com/v1/projects/${DEFAULT_PROJECT_ID}/databases/(default)/documents/student_dashboards/${targetDoc}`;
-    const res = await fetch(url);
-    if (res.ok) {
-      const json: any = await res.json();
-      return parseFirestoreFields(json.fields || {});
-    }
-  } catch (restErr) {
-    console.error('Erro no fallback REST do Firestore:', restErr);
-  }
+  const finalData = data || {};
+  // Garante que todas as coleções sejam SEMPRE arrays seguros (evita erros de .length)
+  finalData.courses = Array.isArray(finalData.courses) ? finalData.courses : [];
+  finalData.tasks = Array.isArray(finalData.tasks) ? finalData.tasks : [];
+  finalData.topics = Array.isArray(finalData.topics) ? finalData.topics : [];
+  finalData.sessions = Array.isArray(finalData.sessions) ? finalData.sessions : [];
+  finalData.notes = Array.isArray(finalData.notes) ? finalData.notes : [];
+  finalData.personalBills = Array.isArray(finalData.personalBills) ? finalData.personalBills : [];
+  finalData.personalAppointments = Array.isArray(finalData.personalAppointments) ? finalData.personalAppointments : [];
 
-  return {};
+  return finalData;
 }
 
-// Helper para salvar documento do estudante no Firestore
+// Helper para salvar documento do estudante no Firestore de forma definitiva via REST API
 async function saveStudentDashboard(userId: string = DEFAULT_DASHBOARD_ID, data: any) {
   const targetDoc = userId || DEFAULT_DASHBOARD_ID;
   const payload = {
@@ -110,39 +100,40 @@ async function saveStudentDashboard(userId: string = DEFAULT_DASHBOARD_ID, data:
     updatedAt: new Date().toISOString(),
   };
 
-  try {
-    getFirebaseAdminApp();
-    const db = admin.firestore();
-    const docRef = db.collection('student_dashboards').doc(targetDoc);
-    await docRef.set(payload, { merge: true });
+  const saveToDoc = async (docName: string) => {
+    try {
+      const keys = Object.keys(payload);
+      const mask = keys.map((k) => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
+      const url = `https://firestore.googleapis.com/v1/projects/${DEFAULT_PROJECT_ID}/databases/(default)/documents/student_dashboards/${docName}?${mask}`;
 
-    // Mantém sempre sincronizado também no documento 'principal'
-    if (targetDoc !== DEFAULT_DASHBOARD_ID) {
-      const pRef = db.collection('student_dashboards').doc(DEFAULT_DASHBOARD_ID);
-      await pRef.set(payload, { merge: true });
-    }
-  } catch (err: any) {
-    console.error('Erro ao salvar no Firestore via Admin SDK:', err?.message || err);
-  }
-}
+      const body = JSON.stringify({
+        fields: toFirestoreFields(payload),
+      });
 
-function parseFirestoreFields(fields: any): any {
-  const result: any = {};
-  for (const key of Object.keys(fields)) {
-    const val = fields[key];
-    if (val.stringValue !== undefined) result[key] = val.stringValue;
-    else if (val.integerValue !== undefined) result[key] = Number(val.integerValue);
-    else if (val.doubleValue !== undefined) result[key] = Number(val.doubleValue);
-    else if (val.booleanValue !== undefined) result[key] = val.booleanValue;
-    else if (val.arrayValue !== undefined) {
-      result[key] = (val.arrayValue.values || []).map((v: any) =>
-        v.mapValue ? parseFirestoreFields(v.mapValue.fields || {}) : v.stringValue || v
-      );
-    } else if (val.mapValue !== undefined) {
-      result[key] = parseFirestoreFields(val.mapValue.fields || {});
+      const res = await fetch(url, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body,
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error(`Falha ao salvar no Firestore (${docName}):`, res.status, errorText);
+      }
+    } catch (err: any) {
+      console.error(`Erro ao persistir no Firestore via REST (${docName}):`, err?.message || err);
     }
+  };
+
+  // Salva no documento alvo
+  await saveToDoc(targetDoc);
+
+  // Mantém sempre sincronizado também no documento 'principal'
+  if (targetDoc !== DEFAULT_DASHBOARD_ID) {
+    await saveToDoc(DEFAULT_DASHBOARD_ID);
   }
-  return result;
 }
 
 const getLocalDateStr = () => {
@@ -433,6 +424,10 @@ const MCP_TOOLS = [
         color: {
           type: 'string',
           description: 'Cor em hexadecimal para identificação visual (ex: "#10b981", "#3b82f6", "#f59e0b", "#8b5cf6")',
+        },
+        evaluations: {
+          type: 'array',
+          description: 'Lista de avaliações/provas/trabalhos com name, weight, date e type (ex: [{ name: "Prova 1", weight: 0.25, date: "2026-09-28" }])',
         },
         userId: {
           type: 'string',
@@ -830,52 +825,76 @@ async function executeTool(name: string, args: any): Promise<string> {
 
   if (name === 'create_card') {
     const dashboard = await getStudentDashboard(userId);
-    const courses: any[] = dashboard.courses || [];
-    const tasks: any[] = dashboard.tasks || [];
+    const courses: any[] = Array.isArray(dashboard.courses) ? dashboard.courses : [];
+    const tasks: any[] = Array.isArray(dashboard.tasks) ? dashboard.tasks : [];
 
-    // Resolver a disciplina correta
-    let courseId = '';
-    let matchedCourse: any = null;
-    if (args.courseCode) {
-      const q = String(args.courseCode).toLowerCase().trim();
-      matchedCourse = courses.find(
-        (c) =>
-          c.code?.toLowerCase().includes(q) ||
-          c.name?.toLowerCase().includes(q) ||
-          c.id?.toLowerCase() === q
-      );
-      if (matchedCourse) {
+    // Suporta criação em lote (cards: [...]) ou card individual
+    const incomingCards: any[] = Array.isArray(args.cards)
+      ? args.cards
+      : args.name
+      ? [args]
+      : [];
+
+    if (incomingCards.length === 0) {
+      return `❌ O nome da tarefa é obrigatório para criar um card.`;
+    }
+
+    const createdList: any[] = [];
+    const newTasksList = [...tasks];
+
+    for (const cardItem of incomingCards) {
+      const cardName = String(cardItem.name || '').trim();
+      if (!cardName) continue;
+
+      let courseId = '';
+      let matchedCourse: any = null;
+      const targetCode = cardItem.courseCode || args.courseCode;
+
+      if (targetCode) {
+        const q = String(targetCode).toLowerCase().trim();
+        matchedCourse = courses.find(
+          (c) =>
+            c.code?.toLowerCase().includes(q) ||
+            c.name?.toLowerCase().includes(q) ||
+            c.id?.toLowerCase() === q
+        );
+        if (matchedCourse) {
+          courseId = matchedCourse.id;
+        }
+      }
+
+      if (!courseId && courses.length > 0) {
+        matchedCourse = courses[0];
         courseId = matchedCourse.id;
       }
+
+      let dueDate = cardItem.dueDate ? String(cardItem.dueDate).trim() : todayStr;
+      if (dueDate.toLowerCase() === 'hoje') dueDate = todayStr;
+      if (dueDate.toLowerCase() === 'amanha' || dueDate.toLowerCase() === 'amanhã') {
+        const tomorrow = new Date(Date.now() + 86400000);
+        dueDate = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+      }
+
+      const newTask = {
+        id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        name: cardName,
+        courseId,
+        status: cardItem.status || 'todo',
+        type: cardItem.type || 'Trabalho',
+        dueDate,
+        notes: cardItem.notes ? String(cardItem.notes).trim() : '',
+        subtasks: Array.isArray(cardItem.subtasks) ? cardItem.subtasks : [],
+      };
+
+      newTasksList.push(newTask);
+      createdList.push({ task: newTask, course: matchedCourse });
     }
 
-    if (!courseId && courses.length > 0) {
-      matchedCourse = courses[0];
-      courseId = matchedCourse.id;
-    }
+    await saveStudentDashboard(userId, { ...dashboard, tasks: newTasksList });
 
-    // Normalizar data
-    let dueDate = args.dueDate ? String(args.dueDate).trim() : todayStr;
-    if (dueDate.toLowerCase() === 'hoje') dueDate = todayStr;
-    if (dueDate.toLowerCase() === 'amanha' || dueDate.toLowerCase() === 'amanhã') {
-      const tomorrow = new Date(Date.now() + 86400000);
-      dueDate = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
-    }
-
-    const newTask = {
-      id: `task-${Date.now()}`,
-      name: String(args.name).trim(),
-      courseId,
-      status: args.status || 'todo',
-      type: args.type || 'Trabalho',
-      dueDate,
-      notes: args.notes ? String(args.notes).trim() : '',
-    };
-
-    const updatedTasks = [...tasks, newTask];
-    await saveStudentDashboard(userId, { ...dashboard, tasks: updatedTasks });
-
-    return `✅ **Card Criado com Sucesso no Painel do Estudante!**
+    if (createdList.length === 1) {
+      const { task: newTask, course: matchedCourse } = createdList[0];
+      return `✅ **Card Criado com Sucesso no Painel do Estudante!**
 
 - **Título:** ${newTask.name}
 - **Disciplina:** ${matchedCourse ? `${matchedCourse.code} (${matchedCourse.name})` : 'Geral'}
@@ -884,6 +903,11 @@ async function executeTool(name: string, args: any): Promise<string> {
 - **Data de Entrega:** ${newTask.dueDate}
 ${newTask.notes ? `- **Anotações:** ${newTask.notes}\n` : ''}
 *O card já foi sincronizado e aparece na Página Inicial e no Quadro de Tarefas.*`;
+    }
+
+    return `✅ **${createdList.length} Cards Criados com Sucesso no Painel do Estudante!**\n\n` +
+      createdList.map(c => `- **${c.task.name}** [${c.course?.code || 'Geral'}] — Entrega: ${c.task.dueDate} (${c.task.status})`).join('\n') +
+      `\n\n*Todos os cards foram persistidos no Firestore.*`;
   }
 
   if (name === 'update_card_status') {
@@ -1079,7 +1103,7 @@ ${newApp.location ? `- **Local:** ${newApp.location}\n` : ''}
   // ==========================================================================
   if (name === 'create_course') {
     const dashboard = await getStudentDashboard(userId);
-    const courses: any[] = dashboard.courses || [];
+    const courses: any[] = Array.isArray(dashboard.courses) ? dashboard.courses : [];
 
     const code = String(args.code || '').trim().toUpperCase();
     const courseName = String(args.name || '').trim();
@@ -1096,6 +1120,22 @@ ${newApp.location ? `- **Local:** ${newApp.location}\n` : ''}
       return `⚠️ Já existe uma disciplina cadastrada com o código **${code}** ou nome **"${courses[existingIndex].name}"**. Use a ferramenta \`update_course\` caso deseje renomear ou alterar seus dados.`;
     }
 
+    const incomingEvaluations = Array.isArray(args.evaluations) ? args.evaluations : [];
+    const incomingGrades = Array.isArray(args.grades) ? args.grades : [];
+    const incomingSyllabus = Array.isArray(args.syllabus) ? args.syllabus : [];
+
+    const grades = incomingGrades.length > 0
+      ? incomingGrades
+      : incomingEvaluations.map((ev: any, idx: number) => ({
+          id: `g-${Date.now()}-${idx}`,
+          name: ev.name || `Avaliação ${idx + 1}`,
+          weight: ev.weight !== undefined ? Number(ev.weight) : 1,
+          maxGrade: ev.maxGrade !== undefined ? Number(ev.maxGrade) : 10,
+          grade: ev.grade !== undefined && ev.grade !== null ? Number(ev.grade) : null,
+          date: ev.date || undefined,
+          type: ev.type || 'Prova',
+        }));
+
     const newCourse = {
       id: `course-${Date.now()}`,
       code,
@@ -1108,8 +1148,9 @@ ${newApp.location ? `- **Local:** ${newApp.location}\n` : ''}
       inProgress: args.inProgress !== false,
       color: args.color ? String(args.color).trim() : '#10b981',
       targetAverage: args.targetAverage ? Number(args.targetAverage) : 7.0,
-      grades: [],
-      syllabus: [],
+      grades,
+      evaluations: incomingEvaluations.length > 0 ? incomingEvaluations : grades,
+      syllabus: incomingSyllabus,
     };
 
     const updatedCourses = [...courses, newCourse];
@@ -1124,6 +1165,7 @@ ${newCourse.schedule ? `- **Horário:** ${newCourse.schedule}\n` : ''}
 ${newCourse.roomOrLink ? `- **Local:** ${newCourse.roomOrLink}\n` : ''}
 - **Semestre:** ${newCourse.semester} / ${newCourse.year}
 - **Status:** ${newCourse.inProgress ? 'Em Andamento (Ativa)' : 'Concluída'}
+${grades.length > 0 ? `- **Avaliações Cadastradas (${grades.length}):** ${grades.map((g: any) => `${g.name} (peso ${g.weight})`).join(', ')}\n` : ''}
 
 *A disciplina foi salva diretamente no Firestore e já está disponível em todo o painel.*`;
   }
@@ -1199,14 +1241,15 @@ A matéria **[${removed.code}] ${removed.name}** foi excluída com sucesso do pa
 
   if (name === 'add_course_grade') {
     const dashboard = await getStudentDashboard(userId);
-    const courses: any[] = dashboard.courses || [];
+    const courses: any[] = Array.isArray(dashboard.courses) ? dashboard.courses : [];
     const query = String(args.courseQuery || '').trim().toLowerCase();
 
     const courseIndex = courses.findIndex(
       (c) =>
         c.code?.toLowerCase() === query ||
         c.id?.toLowerCase() === query ||
-        c.name?.toLowerCase().includes(query)
+        c.name?.toLowerCase().includes(query) ||
+        c.code?.toLowerCase().includes(query)
     );
 
     if (courseIndex === -1) {
@@ -1214,26 +1257,54 @@ A matéria **[${removed.code}] ${removed.name}** foi excluída com sucesso do pa
     }
 
     const course = { ...courses[courseIndex] };
-    const newGrade = {
-      id: `g-${Date.now()}`,
-      name: String(args.name).trim(),
-      grade: args.grade !== undefined && args.grade !== null && args.grade !== '' ? Number(args.grade) : null,
-      maxGrade: args.maxGrade ? Number(args.maxGrade) : 10,
-      weight: args.weight ? Number(args.weight) : 1,
-      date: args.date ? String(args.date).trim() : undefined,
-    };
+    const incomingEvals: any[] = Array.isArray(args.evaluations)
+      ? args.evaluations
+      : args.name
+      ? [args]
+      : [];
 
-    course.grades = [...(course.grades || []), newGrade];
+    if (incomingEvals.length === 0) {
+      return `❌ Nome da avaliação é obrigatório.`;
+    }
+
+    const currentGrades = Array.isArray(course.grades) ? [...course.grades] : [];
+    const currentEvaluations = Array.isArray(course.evaluations) ? [...course.evaluations] : [...currentGrades];
+    const addedList: any[] = [];
+
+    for (const ev of incomingEvals) {
+      const newGrade = {
+        id: `g-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        name: String(ev.name || '').trim(),
+        grade: ev.grade !== undefined && ev.grade !== null && ev.grade !== '' ? Number(ev.grade) : null,
+        maxGrade: ev.maxGrade ? Number(ev.maxGrade) : 10,
+        weight: ev.weight ? Number(ev.weight) : 1,
+        date: ev.date ? String(ev.date).trim() : undefined,
+        type: ev.type ? String(ev.type).trim() : 'Prova',
+      };
+      currentGrades.push(newGrade);
+      currentEvaluations.push(newGrade);
+      addedList.push(newGrade);
+    }
+
+    course.grades = currentGrades;
+    course.evaluations = currentEvaluations;
     courses[courseIndex] = course;
     await saveStudentDashboard(userId, { ...dashboard, courses });
 
-    return `📝 **Avaliação Adicionada em [${course.code}] ${course.name}!**
+    if (addedList.length === 1) {
+      const g = addedList[0];
+      return `📝 **Avaliação Adicionada em [${course.code}] ${course.name}!**
 
-- **Nome da Avaliação:** ${newGrade.name}
-${newGrade.date ? `- **Data:** ${newGrade.date}\n` : ''}
-${newGrade.grade !== null ? `- **Nota Lançada:** ${newGrade.grade} / ${newGrade.maxGrade} (Peso: ${newGrade.weight})\n` : '- **Status:** Agendada (Nota pendente)\n'}
+- **Nome da Avaliação:** ${g.name}
+${g.date ? `- **Data:** ${g.date}\n` : ''}
+${g.grade !== null ? `- **Nota Lançada:** ${g.grade} / ${g.maxGrade} (Peso: ${g.weight})\n` : `- **Status:** Agendada (Nota pendente, Peso: ${g.weight})\n`}
 
-*A prova foi agendada e salva no banco de dados Firestore.*`;
+*A avaliação foi salva diretamente no banco de dados Firestore.*`;
+    }
+
+    return `📝 **${addedList.length} Avaliações Adicionadas em [${course.code}] ${course.name}!**\n\n` +
+      addedList.map(g => `- **${g.name}** (Peso: ${g.weight}${g.date ? `, Data: ${g.date}` : ''})`).join('\n') +
+      `\n\n*Todas as avaliações foram salvas diretamente no banco de dados Firestore.*`;
   }
 
   // ==========================================================================
