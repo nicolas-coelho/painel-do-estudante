@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Course, Task } from '../types';
+import { formatDateBR } from '../dateUtils';
 import {
   connectGoogleCalendarApi,
   fetchGoogleCalendarEvents,
@@ -809,7 +810,7 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
                       >
                         {course.code}
                       </span>
-                      <span className="text-[11px] font-medium text-stone-500">{date}</span>
+                      <span className="text-[11px] font-medium text-stone-500">{formatDateBR(date)}</span>
                     </div>
 
                     <div className="font-medium text-xs text-[#37352f] dark:text-[#f3f3f2]">
@@ -853,7 +854,7 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
                         {courses.find((c) => c.id === t.courseId)?.code || 'Geral'}
                       </span>
                       <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
-                        {t.dueDate}
+                        {formatDateBR(t.dueDate)}
                       </span>
                     </div>
                     <div className="font-medium text-xs text-[#37352f] dark:text-[#f3f3f2] truncate">

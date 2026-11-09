@@ -1,10 +1,11 @@
 export interface GradeItem {
   id: string;
   name: string; // Ex: "P1", "P2", "Trabalho Final"
-  grade: number; // Ex: 8.5
+  grade?: number | null; // Ex: 8.5 ou null se pendente
   maxGrade?: number; // Ex: 10
   weight?: number; // Ex: 1, 2 (peso)
   date?: string;
+  type?: string;
 }
 
 export interface SyllabusItem {

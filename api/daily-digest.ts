@@ -84,6 +84,16 @@ async function fetchDashboardData(): Promise<{
   };
 }
 
+function formatDateBR(dateStr?: string | null): string {
+  if (!dateStr) return '';
+  const match = String(dateStr).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    const [, y, m, d] = match;
+    return `${d}/${m}/${y}`;
+  }
+  return String(dateStr);
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Permite GET para Vercel Cron ou POST para disparo manual
   if (req.method !== 'GET' && req.method !== 'POST') {
@@ -183,7 +193,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               <span class="badge badge-urgent">${t.dueDate < todayStr ? 'Atrasada' : 'Hoje'}</span>
               ${t.name}
             </div>
-            <div class="item-meta">Disciplina: <b>${c ? c.code : 'Geral'}</b> • Entrega: ${t.dueDate}</div>
+            <div class="item-meta">Disciplina: <b>${c ? c.code : 'Geral'}</b> • Entrega: ${formatDateBR(t.dueDate)}</div>
           </div>`;
         }).join('') : '<p style="font-size: 13px; color: #64748b; margin: 0;">🎉 Nenhuma tarefa atrasada ou para hoje!</p>'}
       </div>
@@ -197,7 +207,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               <span class="badge badge-exam">${ex.course.code}</span>
               ${ex.exam.name}
             </div>
-            <div class="item-meta">Data da Prova: <b>${ex.date}</b> • ${ex.course.name}</div>
+            <div class="item-meta">Data da Prova: <b>${formatDateBR(ex.date)}</b> • ${ex.course.name}</div>
           </div>
         `).join('') : '<p style="font-size: 13px; color: #64748b; margin: 0;">Nenhuma prova agendada para os próximos 14 dias.</p>'}
       </div>

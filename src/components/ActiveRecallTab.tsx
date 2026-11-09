@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { StudyTopic, Course, ExerciseAttempt } from '../types';
 import { useNotification } from '../context/NotificationContext';
+import { formatDateBR } from '../dateUtils';
 import {
   Brain,
   Target,
@@ -678,7 +679,7 @@ export const ActiveRecallTab: React.FC<ActiveRecallTabProps> = ({
                           }`}
                         >
                           <Calendar className="w-3.5 h-3.5" />
-                          <span>{topic.nextReviewDate}</span>
+                          <span>{formatDateBR(topic.nextReviewDate)}</span>
                           {isDue && (
                             <span className="px-1.5 py-0.2 rounded bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 text-[10px] font-bold">
                               Fazer Hoje
@@ -687,7 +688,7 @@ export const ActiveRecallTab: React.FC<ActiveRecallTabProps> = ({
                         </span>
                         {topic.lastReviewDate && (
                           <div className="text-[10px] text-[#787774] dark:text-[#9b9a97]">
-                            Última: {topic.lastReviewDate}
+                            Última: {formatDateBR(topic.lastReviewDate)}
                           </div>
                         )}
                       </div>
@@ -962,7 +963,7 @@ export const ActiveRecallTab: React.FC<ActiveRecallTabProps> = ({
                     </div>
 
                     <div className="flex items-center justify-between text-xs text-[#787774] dark:text-[#9b9a97]">
-                      <span>{att.date}</span>
+                      <span>{formatDateBR(att.date)}</span>
                       <span>
                         {att.correctExercises} acertos / {att.totalExercises} questões
                       </span>

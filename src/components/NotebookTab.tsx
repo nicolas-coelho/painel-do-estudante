@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { NotebookNote } from '../types';
 import { useNotification } from '../context/NotificationContext';
+import { formatDateBR } from '../dateUtils';
 import { Plus, Tag, Trash2, X, Search, FileText } from 'lucide-react';
 
 interface NotebookTabProps {
@@ -127,7 +128,7 @@ export const NotebookTab: React.FC<NotebookTabProps> = ({
                   </span>
                 ))}
               </div>
-              <span className="text-[#9b9a97] text-[10px]">{note.createdAt}</span>
+              <span className="text-[#9b9a97] text-[10px]">{formatDateBR(note.createdAt)}</span>
             </div>
           </div>
         ))}

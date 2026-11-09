@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Task, Course, TaskStatus, TaskType } from '../types';
 import { useNotification } from '../context/NotificationContext';
+import { formatDateBR } from '../dateUtils';
 import { Plus, Calendar, AlertCircle, Trash2, X, GripVertical } from 'lucide-react';
 
 interface TasksKanbanTabProps {
@@ -275,7 +276,7 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
                       <div className="flex items-center justify-between pt-1 text-[11px] text-[#787774] dark:text-[#9b9a97]">
                         <div className={`flex items-center gap-1 ${isLate ? 'text-red-500 font-semibold' : ''}`}>
                           <Calendar className="w-3 h-3" />
-                          <span>{task.dueDate}</span>
+                          <span>{formatDateBR(task.dueDate)}</span>
                           {isLate && <AlertCircle className="w-3 h-3" />}
                         </div>
 

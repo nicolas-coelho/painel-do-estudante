@@ -147,6 +147,16 @@ const getLocalDateStr = () => {
   return `${year}-${month}-${day}`;
 };
 
+function formatDateBR(dateStr?: string | null): string {
+  if (!dateStr) return '';
+  const match = String(dateStr).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    const [, y, m, d] = match;
+    return `${d}/${m}/${y}`;
+  }
+  return String(dateStr);
+}
+
 // ============================================================================
 // DEFINIÇÃO DAS FERRAMENTAS MCP (TOOLS)
 // ============================================================================
@@ -743,7 +753,7 @@ async function executeTool(name: string, args: any): Promise<string> {
       )
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    let output = `# 📋 Rotina de Estudos do Estudante (${todayStr})\n\n`;
+    let output = `# 📋 Rotina de Estudos do Estudante (${formatDateBR(todayStr)})\n\n`;
 
     // 1. Entregas de Hoje
     output += `## 🚨 Entregas e Atividades de Hoje (${todayTasks.length})\n`;
@@ -763,7 +773,7 @@ async function executeTool(name: string, args: any): Promise<string> {
       output += `## ⚠️ Tarefas Atrasadas (${overdueTasks.length})\n`;
       overdueTasks.forEach((t) => {
         const course = courses.find((c) => c.id === t.courseId);
-        output += `- ❗ **${t.name}** (${course ? course.code : 'Geral'}) - Prazo original: ${t.dueDate}\n`;
+        output += `- ❗ **${t.name}** (${course ? course.code : 'Geral'}) - Prazo original: ${formatDateBR(t.dueDate)}\n`;
       });
       output += `\n`;
     }
@@ -777,7 +787,7 @@ async function executeTool(name: string, args: any): Promise<string> {
     output += `## 📝 Próximas Provas Agendadas\n`;
     if (upcomingExams.length > 0) {
       upcomingExams.slice(0, 5).forEach((e) => {
-        output += `- **${e.date}** | [${e.courseCode}] ${e.examName} (${e.courseName})\n`;
+        output += `- **${formatDateBR(e.date)}** | [${e.courseCode}] ${e.examName} (${e.courseName})\n`;
       });
     } else {
       output += `*Nenhuma data de prova cadastrada.*\n`;
@@ -903,13 +913,13 @@ async function executeTool(name: string, args: any): Promise<string> {
 - **Disciplina:** ${matchedCourse ? `${matchedCourse.code} (${matchedCourse.name})` : 'Geral'}
 - **Tipo:** ${newTask.type}
 - **Status Inicial:** ${newTask.status === 'todo' ? 'A Fazer' : newTask.status === 'in_progress' ? 'Em Andamento' : 'Concluído'}
-- **Data de Entrega:** ${newTask.dueDate}
+- **Data de Entrega:** ${formatDateBR(newTask.dueDate)}
 ${newTask.notes ? `- **Anotações:** ${newTask.notes}\n` : ''}
 *O card já foi sincronizado e aparece na Página Inicial e no Quadro de Tarefas.*`;
     }
 
     return `✅ **${createdList.length} Cards Criados com Sucesso no Painel do Estudante!**\n\n` +
-      createdList.map(c => `- **${c.task.name}** [${c.course?.code || 'Geral'}] — Entrega: ${c.task.dueDate} (${c.task.status})`).join('\n') +
+      createdList.map(c => `- **${c.task.name}** [${c.course?.code || 'Geral'}] — Entrega: ${formatDateBR(c.task.dueDate)} (${c.task.status})`).join('\n') +
       `\n\n*Todos os cards foram persistidos no Firestore.*`;
   }
 
@@ -951,7 +961,7 @@ A tarefa **"${task.name}"** foi movida para o status **"${args.newStatus === 'do
       if (c.grades && c.grades.length > 0) {
         out += `- **Avaliações/Provas:**\n`;
         c.grades.forEach((g: any) => {
-          out += `  * ${g.name}: Nota ${g.grade ?? 'Pendente'}${g.date ? ` (Data: ${g.date})` : ''}\n`;
+          out += `  * ${g.name}: Nota ${g.grade ?? 'Pendente'}${g.date ? ` (Data: ${formatDateBR(g.date)})` : ''}\n`;
         });
       }
       out += `\n`;
@@ -1022,7 +1032,7 @@ ${newBill.barcodeOrLink ? `- **Código/PIX:** ${newBill.barcodeOrLink}\n` : ''}
       const isPaid = b.status === 'paid';
       const isOverdue = !isPaid && b.dueDate < todayStr;
       const statusIcon = isPaid ? '✅' : isOverdue ? '⚠️' : '🕒';
-      out += `- ${statusIcon} **${b.title}** — R$ ${Number(b.amount || 0).toFixed(2)} | Vencimento: ${b.dueDate} | Status: ${isPaid ? 'Pago' : isOverdue ? 'Atrasado' : 'Pendente'}\n`;
+      out += `- ${statusIcon} **${b.title}** — R$ ${Number(b.amount || 0).toFixed(2)} | Vencimento: ${formatDateBR(b.dueDate)} | Status: ${isPaid ? 'Pago' : isOverdue ? 'Atrasado' : 'Pendente'}\n`;
       if (b.barcodeOrLink) out += `  *PIX/Linha digitável: ${b.barcodeOrLink}*\n`;
       if (b.notes) out += `  *Nota: ${b.notes}*\n`;
     });
@@ -1074,7 +1084,7 @@ A despesa **"${bill.title}"** (R$ ${Number(bill.amount || 0).toFixed(2)}) foi ma
     return `✅ **Compromisso Criado no Bullet Journal!**
 
 - **Compromisso:** ${newApp.title}
-- **Data:** ${newApp.date}
+- **Data:** ${formatDateBR(newApp.date)}
 ${newApp.time ? `- **Horário:** ${newApp.time}\n` : ''}
 ${newApp.location ? `- **Local:** ${newApp.location}\n` : ''}
 - **Categoria:** ${newApp.category}
@@ -1095,7 +1105,7 @@ ${newApp.location ? `- **Local:** ${newApp.location}\n` : ''}
 
     let out = `# 🗓️ Compromissos & Rotina Pessoal (${list.length})\n\n`;
     list.forEach((a) => {
-      out += `- [${a.completed ? 'X' : ' '}] **${a.title}** — Data: ${a.date}${a.time ? ` às ${a.time}` : ''}${a.location ? ` (${a.location})` : ''} | Categoria: ${a.category || 'pessoal'}\n`;
+      out += `- [${a.completed ? 'X' : ' '}] **${a.title}** — Data: ${formatDateBR(a.date)}${a.time ? ` às ${a.time}` : ''}${a.location ? ` (${a.location})` : ''} | Categoria: ${a.category || 'pessoal'}\n`;
       if (a.notes) out += `  *Nota: ${a.notes}*\n`;
     });
     return out;
@@ -1299,14 +1309,14 @@ A matéria **[${removed.code}] ${removed.name}** foi excluída com sucesso do pa
       return `📝 **Avaliação Adicionada em [${course.code}] ${course.name}!**
 
 - **Nome da Avaliação:** ${g.name}
-${g.date ? `- **Data:** ${g.date}\n` : ''}
+${g.date ? `- **Data:** ${formatDateBR(g.date)}\n` : ''}
 ${g.grade !== null ? `- **Nota Lançada:** ${g.grade} / ${g.maxGrade} (Peso: ${g.weight})\n` : `- **Status:** Agendada (Nota pendente, Peso: ${g.weight})\n`}
 
 *A avaliação foi salva diretamente no banco de dados Firestore.*`;
     }
 
     return `📝 **${addedList.length} Avaliações Adicionadas em [${course.code}] ${course.name}!**\n\n` +
-      addedList.map(g => `- **${g.name}** (Peso: ${g.weight}${g.date ? `, Data: ${g.date}` : ''})`).join('\n') +
+      addedList.map(g => `- **${g.name}** (Peso: ${g.weight}${g.date ? `, Data: ${formatDateBR(g.date)}` : ''})`).join('\n') +
       `\n\n*Todas as avaliações foram salvas diretamente no banco de dados Firestore.*`;
   }
 
@@ -1447,7 +1457,7 @@ ${newTopic.question ? `- **Pergunta de Fixação:** ${newTopic.question}\n` : ''
 - **Aproveitamento:** ${correct}/${total} (${scorePct}%)
 - **Resultado:** ${passed ? `✅ Aprovado na Meta (Meta: ${target}%)` : `⚠️ Abaixo da Meta (Meta: ${target}%)`}
 - **Nova Fase:** ${PHASES[nextStage].label}
-- **Próxima Revisão Agendada:** ${nextReviewDate} ${passed ? `(daqui a ${daysToAdd} dias)` : '(reforço em 3 dias)'}
+- **Próxima Revisão Agendada:** ${formatDateBR(nextReviewDate)} ${passed ? `(daqui a ${daysToAdd} dias)` : '(reforço em 3 dias)'}
 ${newAttempt.notes ? `- **Observações:** ${newAttempt.notes}\n` : ''}
 
 *Histórico salvo diretamente no Firestore e refletido nas estatísticas do painel.*`;
@@ -1485,7 +1495,7 @@ ${newAttempt.notes ? `- **Observações:** ${newAttempt.notes}\n` : ''}
 
       out += `### ${isDue ? '🚨' : '📌'} ${t.name} (${course ? course.code : 'Geral'})\n`;
       out += `- **Fase Atual:** ${stageLabel}\n`;
-      out += `- **Próxima Revisão:** ${t.nextReviewDate} ${isDue ? '**[HOJE / ATRASADA]**' : ''}\n`;
+      out += `- **Próxima Revisão:** ${formatDateBR(t.nextReviewDate)} ${isDue ? '**[HOJE / ATRASADA]**' : ''}\n`;
       if (lastAttempt) {
         out += `- **Último Desempenho:** ${lastAttempt.scorePercentage}% (${lastAttempt.correctExercises}/${lastAttempt.totalExercises}) - ${lastAttempt.passed ? 'Aprovado' : 'Reforço'}\n`;
       }
@@ -1517,7 +1527,7 @@ ${newAttempt.notes ? `- **Observações:** ${newAttempt.notes}\n` : ''}
 
 - **Título:** ${newNote.title}
 - **Tags:** ${newNote.tags.join(', ')}
-- **Data:** ${newNote.createdAt}
+- **Data:** ${formatDateBR(newNote.createdAt)}
 
 *Anotação salva e sincronizada no Painel do Estudante.*`;
   }
@@ -1543,7 +1553,7 @@ ${newAttempt.notes ? `- **Observações:** ${newAttempt.notes}\n` : ''}
 
     let out = `# 📓 Anotações do Caderno (${filtered.length})\n\n`;
     filtered.forEach((n) => {
-      out += `### 📄 ${n.title} (${n.createdAt || todayStr})\n`;
+      out += `### 📄 ${n.title} (${formatDateBR(n.createdAt || todayStr)})\n`;
       if (n.tags && n.tags.length > 0) {
         out += `*Tags: ${n.tags.map((t: string) => `#${t}`).join(' ')}*\n\n`;
       }

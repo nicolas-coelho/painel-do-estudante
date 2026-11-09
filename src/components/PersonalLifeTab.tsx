@@ -184,7 +184,7 @@ export const PersonalLifeTab: React.FC<PersonalLifeTabProps> = ({
     return groups;
   }, [bills, appointments, leftView]);
 
-  // Formata cabeçalho de data no estilo do print: "03.09 . S"
+  // Formata cabeçalho de data no padrão brasileiro DD/MM: "03/09 · S"
   const formatDateHeader = (dateStr: string) => {
     const parts = dateStr.split('-');
     if (parts.length !== 3) return dateStr;
@@ -196,7 +196,7 @@ export const PersonalLifeTab: React.FC<PersonalLifeTabProps> = ({
     const dayNames = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']; // Dom, Seg, Ter, Qua, Qui, Sex, Sáb
     const dayLetter = dayNames[d.getDay()] || '';
 
-    return `${month}.${day} . ${dayLetter}`;
+    return `${day}/${month}/${year} · ${dayLetter}`;
   };
 
   // Itens de hoje para o card direito "Task - Today"

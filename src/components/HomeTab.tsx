@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Course, Task, TaskStatus, TaskType, PersonalBill, PersonalAppointment } from '../types';
 import { useNotification } from '../context/NotificationContext';
+import { formatDateBR } from '../dateUtils';
 import { getClassesForDayOfWeek, getEventDateStr, getEventTimeStr } from '../calendarUtils';
 import { getSavedCalendarToken, fetchGoogleCalendarEvents, GoogleCalendarEvent } from '../googleCalendar';
 import {
@@ -573,7 +574,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                             }`}
                           >
                             <CalendarIcon className="w-3 h-3" />
-                            <span>{task.dueDate}</span>
+                            <span>{formatDateBR(task.dueDate)}</span>
                             {isLate && <AlertCircle className="w-3 h-3" />}
                           </div>
 
@@ -882,7 +883,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                     Atividades do Dia Selecionado
                   </div>
                   <div className="text-base font-bold text-[#37352f] dark:text-[#f3f3f2] mt-0.5 flex items-center justify-between">
-                    <span>{selectedCalendarDate}</span>
+                    <span>{formatDateBR(selectedCalendarDate)}</span>
                     {selectedCalendarDate === todayStr && (
                       <span className="text-[10px] px-2 py-0.5 bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 rounded-full font-medium">
                         Hoje

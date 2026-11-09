@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Course, GradeItem, SyllabusItem, Task } from '../types';
 import { useNotification } from '../context/NotificationContext';
+import { formatDateBR } from '../dateUtils';
 import {
   Plus,
   BookOpen,
@@ -56,6 +57,8 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
   const [newGradeMax, setNewGradeMax] = useState<number | ''>(10);
   const [newGradeWeight, setNewGradeWeight] = useState<number | ''>(1);
   const [newGradeDate, setNewGradeDate] = useState('');
+  const [editingGradeId, setEditingGradeId] = useState<string | null>(null);
+  const [inlineGradeValue, setInlineGradeValue] = useState<string>('');
 
   // New syllabus item state inside edit modal
   const [newSyllabusTitle, setNewSyllabusTitle] = useState('');
@@ -72,11 +75,19 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
   // Quick calculations for a course
   const calculateAverage = (grades?: GradeItem[]): number | null => {
     if (!grades || grades.length === 0) return null;
+    const gradedItems = grades.filter((g) => {
+      if (g.grade === undefined || g.grade === null) return false;
+      const num = Number(g.grade);
+      return !isNaN(num);
+    });
+    if (gradedItems.length === 0) return null;
+
     let totalScore = 0;
     let totalWeight = 0;
-    for (const g of grades) {
-      const weight = g.weight || 1;
-      totalScore += g.grade * weight;
+    for (const g of gradedItems) {
+      const weight = typeof g.weight === 'number' && !isNaN(g.weight) && g.weight > 0 ? g.weight : 1;
+      const gradeVal = Number(g.grade);
+      totalScore += gradeVal * weight;
       totalWeight += weight;
     }
     return totalWeight > 0 ? Number((totalScore / totalWeight).toFixed(2)) : null;
@@ -120,12 +131,15 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
 
   const handleAddGrade = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingCourse || !newGradeName.trim() || newGradeValue === '') return;
+    if (!editingCourse || !newGradeName.trim()) return;
+
+    const parsedGrade =
+      newGradeValue === '' || isNaN(Number(newGradeValue)) ? null : Number(newGradeValue);
 
     const newGrade: GradeItem = {
       id: `grade-${Date.now()}`,
       name: newGradeName.trim(),
-      grade: Number(newGradeValue),
+      grade: parsedGrade,
       maxGrade: Number(newGradeMax) || 10,
       weight: Number(newGradeWeight) || 1,
       date: newGradeDate || undefined,
@@ -142,6 +156,26 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
     setNewGradeValue('');
     setNewGradeWeight(1);
     setNewGradeDate('');
+  };
+
+  const handleSaveInlineGrade = (gradeId: string) => {
+    if (!editingCourse) return;
+    const trimmed = inlineGradeValue.trim();
+    const finalVal =
+      trimmed === '' ? null : isNaN(Number(trimmed.replace(',', '.'))) ? null : Number(trimmed.replace(',', '.'));
+
+    const updatedGrades = (editingCourse.grades || []).map((g) => {
+      if (g.id === gradeId) {
+        return { ...g, grade: finalVal };
+      }
+      return g;
+    });
+
+    const updated = { ...editingCourse, grades: updatedGrades };
+    setEditingCourse(updated);
+    onUpdateCourse(updated);
+    setEditingGradeId(null);
+    setInlineGradeValue('');
   };
 
   const handleDeleteGrade = (gradeId: string) => {
@@ -335,7 +369,7 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
                 <div className="pt-2 border-t border-[#f0f0ee] dark:border-[#2a2a2a] grid grid-cols-2 gap-2 text-xs">
                   <div>
                     <span className="text-[10px] text-[#9b9a97] uppercase tracking-wider block">Média Atual</span>
-                    {avg !== null ? (
+                    {avg !== null && !isNaN(avg) ? (
                       <span
                         className={`font-semibold text-xs ${
                           avg >= (c.targetAverage || 7) ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
@@ -598,14 +632,14 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
                     return (
                       <div className="p-4 bg-[#f7f6f3] dark:bg-[#252525] rounded-xl border border-[#e9e9e8] dark:border-[#333] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
-                          <div className={`p-3 rounded-lg text-lg ${avg !== null && avg >= target ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400'}`}>
+                          <div className={`p-3 rounded-lg text-lg ${avg !== null && !isNaN(avg) && avg >= target ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400'}`}>
                             🏆
                           </div>
                           <div>
                             <div className="text-[11px] text-[#787774] dark:text-[#9b9a97] uppercase tracking-wider">Média Ponderada Atual</div>
                             <div className="text-xl font-bold flex items-center gap-2">
-                              {avg !== null ? `${avg.toFixed(2)}` : 'Sem avaliações'}
-                              <span className="text-xs text-[#9b9a97] font-normal">/ 10</span>
+                              {avg !== null && !isNaN(avg) ? `${avg.toFixed(2)}` : 'Sem notas lançadas'}
+                              {avg !== null && !isNaN(avg) && <span className="text-xs text-[#9b9a97] font-normal">/ 10</span>}
                             </div>
                           </div>
                         </div>
@@ -613,7 +647,7 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
                         <div className="text-right sm:border-l sm:border-[#e9e9e8] dark:sm:border-[#333] sm:pl-4">
                           <div className="text-[11px] text-[#787774] dark:text-[#9b9a97]">Meta de Aprovação: {target.toFixed(1)}</div>
                           <div className="mt-0.5">
-                            {avg !== null ? (
+                            {avg !== null && !isNaN(avg) ? (
                               avg >= target ? (
                                 <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold text-xs">
                                   <Check className="w-3.5 h-3.5" /> Na meta de aprovação
@@ -624,7 +658,7 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
                                 </span>
                               )
                             ) : (
-                              <span className="text-xs text-[#9b9a97]">Adicione provas abaixo</span>
+                              <span className="text-xs text-[#9b9a97]">Aguardando lançamento de notas</span>
                             )}
                           </div>
                         </div>
@@ -640,30 +674,91 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
 
                     {(editingCourse.grades || []).length > 0 ? (
                       <div className="divide-y divide-[#f0f0ee] dark:divide-[#2f2f2f] border border-[#e9e9e8] dark:border-[#2f2f2f] rounded-xl overflow-hidden bg-white dark:bg-[#1f1f1f]">
-                        {(editingCourse.grades || []).map((grade) => (
-                          <div key={grade.id} className="p-3 flex items-center justify-between gap-3 hover:bg-stone-50 dark:hover:bg-[#252525] transition-colors">
-                            <div>
-                              <div className="font-medium text-[#37352f] dark:text-[#f3f3f2]">{grade.name}</div>
-                              <div className="text-[11px] text-[#787774] dark:text-[#9b9a97] flex items-center gap-2 mt-0.5">
-                                <span>Peso: {grade.weight || 1}</span>
-                                {grade.date && <span>• Data: {grade.date}</span>}
+                        {(editingCourse.grades || []).map((grade) => {
+                          const hasGrade = grade.grade !== undefined && grade.grade !== null && !isNaN(Number(grade.grade));
+                          const isEditingThis = editingGradeId === grade.id;
+
+                          return (
+                            <div key={grade.id} className="p-3 flex items-center justify-between gap-3 hover:bg-stone-50 dark:hover:bg-[#252525] transition-colors">
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-[#37352f] dark:text-[#f3f3f2] truncate">{grade.name}</div>
+                                <div className="text-[11px] text-[#787774] dark:text-[#9b9a97] flex items-center gap-2 mt-0.5">
+                                  <span>Peso: {grade.weight || 1}</span>
+                                  {grade.date && <span>• Data: {formatDateBR(grade.date)}</span>}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                {isEditingThis ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      type="number"
+                                      step="0.1"
+                                      min="0"
+                                      max={grade.maxGrade || 10}
+                                      autoFocus
+                                      placeholder="0.0"
+                                      value={inlineGradeValue}
+                                      onChange={(e) => setInlineGradeValue(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') handleSaveInlineGrade(grade.id);
+                                        if (e.key === 'Escape') setEditingGradeId(null);
+                                      }}
+                                      className="w-16 px-2 py-1 text-xs rounded border border-blue-400 dark:border-blue-500 bg-white dark:bg-[#1a1a1a] text-center font-mono font-bold focus:outline-none"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSaveInlineGrade(grade.id)}
+                                      className="px-2 py-1 text-[11px] bg-blue-600 hover:bg-blue-700 text-white font-medium rounded transition-colors"
+                                    >
+                                      Salvar
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditingGradeId(null)}
+                                      className="px-1.5 py-1 text-[11px] text-stone-500 hover:text-stone-700 dark:hover:text-stone-300 transition-colors"
+                                    >
+                                      Cancelar
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2">
+                                    {hasGrade ? (
+                                      <span className="font-bold text-sm text-blue-600 dark:text-blue-400 font-mono">
+                                        {Number(grade.grade)} <span className="text-xs text-[#9b9a97] font-normal">/ {grade.maxGrade || 10}</span>
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40">
+                                        Pendente
+                                      </span>
+                                    )}
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingGradeId(grade.id);
+                                        setInlineGradeValue(hasGrade ? String(grade.grade) : '');
+                                      }}
+                                      className="p-1 text-stone-400 hover:text-blue-600 dark:hover:text-blue-400 rounded transition-colors"
+                                      title={hasGrade ? 'Alterar nota' : 'Lançar nota'}
+                                    >
+                                      <Edit3 className="w-3.5 h-3.5" />
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteGrade(grade.id)}
+                                      className="p-1 text-red-400 hover:text-red-600 dark:hover:text-red-400 rounded transition-colors"
+                                      title="Excluir nota"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             </div>
-
-                            <div className="flex items-center gap-3">
-                              <span className="font-bold text-sm text-blue-600 dark:text-blue-400 font-mono">
-                                {grade.grade} <span className="text-xs text-[#9b9a97] font-normal">/ {grade.maxGrade || 10}</span>
-                              </span>
-                              <button
-                                onClick={() => handleDeleteGrade(grade.id)}
-                                className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded"
-                                title="Excluir nota"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     ) : (
                       <div className="p-4 text-center border border-dashed border-[#e9e9e8] dark:border-[#333] rounded-xl text-stone-400 text-xs">
@@ -676,7 +771,7 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
                   <form onSubmit={handleAddGrade} className="p-4 bg-[#fcfbf9] dark:bg-[#252525] rounded-xl border border-[#e9e9e8] dark:border-[#2f2f2f] space-y-3">
                     <h5 className="font-semibold text-xs text-[#37352f] dark:text-[#f3f3f2] flex items-center gap-1.5">
                       <Plus className="w-3.5 h-3.5 text-blue-500" />
-                      <span>Adicionar Avaliação / Nota</span>
+                      <span>Adicionar Avaliação / Prova</span>
                     </h5>
 
                     <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
@@ -696,8 +791,7 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
                           step="0.1"
                           min="0"
                           max="100"
-                          required
-                          placeholder="Nota (Ex: 8.5)"
+                          placeholder="Nota (Opcional se pendente)"
                           value={newGradeValue}
                           onChange={(e) => setNewGradeValue(e.target.value === '' ? '' : parseFloat(e.target.value))}
                           className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-[#e9e9e8] dark:border-[#333] bg-white dark:bg-[#1e1e1e] focus:outline-none focus:border-blue-500"
@@ -852,7 +946,7 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
                                 <span className="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 text-[10px] font-medium">
                                   {t.type}
                                 </span>
-                                <span>Entrega: {t.dueDate}</span>
+                                <span>Entrega: {formatDateBR(t.dueDate)}</span>
                               </div>
                             </div>
                             <span
