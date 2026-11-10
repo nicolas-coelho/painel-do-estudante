@@ -71,10 +71,23 @@ export const App: React.FC = () => {
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [isFirebaseModalOpen, setIsFirebaseModalOpen] = useState(false);
 
-  // Persistence helpers
-  const loadState = <T,>(key: string, fallback: T): T => {
+  // Persistence helpers com isolamento por usuário (multi-tenant)
+  const getUserStorageKey = (key: string, customUid?: string) => {
+    const uid = customUid || firebaseUser?.uid || 'guest';
+    return `study_${uid}_${key}`;
+  };
+
+  const saveUserState = (key: string, data: any, customUid?: string) => {
     try {
-      const saved = localStorage.getItem(key);
+      localStorage.setItem(getUserStorageKey(key, customUid), JSON.stringify(data));
+    } catch (e) {
+      console.warn('Falha ao salvar no localStorage:', e);
+    }
+  };
+
+  const loadUserState = <T,>(key: string, fallback: T, customUid?: string): T => {
+    try {
+      const saved = localStorage.getItem(getUserStorageKey(key, customUid));
       return saved ? JSON.parse(saved) : fallback;
     } catch {
       return fallback;
@@ -82,57 +95,56 @@ export const App: React.FC = () => {
   };
 
   const [courses, setCourses] = useState<Course[]>(() =>
-    loadState('study_courses', initialCourses)
+    loadUserState('courses', initialCourses)
   );
   const [tasks, setTasks] = useState<Task[]>(() =>
-    loadState('study_tasks', initialTasks)
+    loadUserState('tasks', initialTasks)
   );
   const [topics, setTopics] = useState<StudyTopic[]>(() =>
-    loadState('study_topics', initialTopics)
+    loadUserState('topics', initialTopics)
   );
   const [sessions, setSessions] = useState<StudySession[]>(() =>
-    loadState('study_sessions', initialSessions)
+    loadUserState('sessions', initialSessions)
   );
   const [notes, setNotes] = useState<NotebookNote[]>(() =>
-    loadState('study_notes', initialNotes)
+    loadUserState('notes', initialNotes)
   );
   const [personalBills, setPersonalBills] = useState<PersonalBill[]>(() =>
-    loadState('study_personal_bills', initialPersonalBills)
+    loadUserState('personalBills', initialPersonalBills)
   );
   const [personalAppointments, setPersonalAppointments] = useState<PersonalAppointment[]>(() =>
-    loadState('study_personal_appointments', initialPersonalAppointments)
+    loadUserState('personalAppointments', initialPersonalAppointments)
   );
   const [calendarId, setCalendarId] = useState<string>(() =>
-    loadState('study_calendar_id', 'nicolasplcoelho@gmail.com')
+    loadUserState('calendarId', '')
   );
   const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
 
-  // Helper para salvar na nuvem de forma direta e sem conflitos
+  // Helper para salvar na nuvem de forma estritamente isolada por usuário
   const syncEntityToCloud = (key: string, data: any) => {
     const targetDoc = firebaseUser ? firebaseUser.uid : 'principal';
     saveToFirestore(targetDoc, { [key]: data });
-    saveToFirestore('principal', { [key]: data });
   };
 
   // Handlers para Tópicos de Estudo (Active Recall & Revisões)
   const handleAddTopic = (newTopic: StudyTopic) => {
     const updated = [...topics, newTopic];
     setTopics(updated);
-    localStorage.setItem('study_topics', JSON.stringify(updated));
+    saveUserState('topics', updated);
     syncEntityToCloud('topics', updated);
   };
 
   const handleUpdateTopic = (updatedTopic: StudyTopic) => {
     const updated = topics.map((t) => (t.id === updatedTopic.id ? updatedTopic : t));
     setTopics(updated);
-    localStorage.setItem('study_topics', JSON.stringify(updated));
+    saveUserState('topics', updated);
     syncEntityToCloud('topics', updated);
   };
 
   const handleDeleteTopic = (id: string) => {
     const updated = topics.filter((t) => t.id !== id);
     setTopics(updated);
-    localStorage.setItem('study_topics', JSON.stringify(updated));
+    saveUserState('topics', updated);
     syncEntityToCloud('topics', updated);
   };
 
@@ -140,21 +152,21 @@ export const App: React.FC = () => {
   const handleAddCourse = (newCourse: Course) => {
     const updated = [...courses, newCourse];
     setCourses(updated);
-    localStorage.setItem('study_courses', JSON.stringify(updated));
+    saveUserState('courses', updated);
     syncEntityToCloud('courses', updated);
   };
 
   const handleUpdateCourse = (updatedCourse: Course) => {
     const updated = courses.map((c) => (c.id === updatedCourse.id ? updatedCourse : c));
     setCourses(updated);
-    localStorage.setItem('study_courses', JSON.stringify(updated));
+    saveUserState('courses', updated);
     syncEntityToCloud('courses', updated);
   };
 
   const handleDeleteCourse = (id: string) => {
     const updated = courses.filter((c) => c.id !== id);
     setCourses(updated);
-    localStorage.setItem('study_courses', JSON.stringify(updated));
+    saveUserState('courses', updated);
     syncEntityToCloud('courses', updated);
   };
 
@@ -162,21 +174,21 @@ export const App: React.FC = () => {
   const handleAddTask = (newTask: Task) => {
     const updated = [...tasks, newTask];
     setTasks(updated);
-    localStorage.setItem('study_tasks', JSON.stringify(updated));
+    saveUserState('tasks', updated);
     syncEntityToCloud('tasks', updated);
   };
 
   const handleUpdateTask = (updatedTask: Task) => {
     const updated = tasks.map((t) => (t.id === updatedTask.id ? updatedTask : t));
     setTasks(updated);
-    localStorage.setItem('study_tasks', JSON.stringify(updated));
+    saveUserState('tasks', updated);
     syncEntityToCloud('tasks', updated);
   };
 
   const handleDeleteTask = (id: string) => {
     const updated = tasks.filter((t) => t.id !== id);
     setTasks(updated);
-    localStorage.setItem('study_tasks', JSON.stringify(updated));
+    saveUserState('tasks', updated);
     syncEntityToCloud('tasks', updated);
   };
 
@@ -184,14 +196,14 @@ export const App: React.FC = () => {
   const handleAddSession = (newSession: StudySession) => {
     const updated = [newSession, ...sessions];
     setSessions(updated);
-    localStorage.setItem('study_sessions', JSON.stringify(updated));
+    saveUserState('sessions', updated);
     syncEntityToCloud('sessions', updated);
   };
 
   const handleDeleteSession = (id: string) => {
     const updated = sessions.filter((s) => s.id !== id);
     setSessions(updated);
-    localStorage.setItem('study_sessions', JSON.stringify(updated));
+    saveUserState('sessions', updated);
     syncEntityToCloud('sessions', updated);
   };
 
@@ -199,21 +211,21 @@ export const App: React.FC = () => {
   const handleAddNote = (newNote: NotebookNote) => {
     const updated = [newNote, ...notes];
     setNotes(updated);
-    localStorage.setItem('study_notes', JSON.stringify(updated));
+    saveUserState('notes', updated);
     syncEntityToCloud('notes', updated);
   };
 
   const handleDeleteNote = (id: string) => {
     const updated = notes.filter((n) => n.id !== id);
     setNotes(updated);
-    localStorage.setItem('study_notes', JSON.stringify(updated));
+    saveUserState('notes', updated);
     syncEntityToCloud('notes', updated);
   };
 
   // Handler para Google Calendar ID
   const handleUpdateCalendarId = (newId: string) => {
     setCalendarId(newId);
-    localStorage.setItem('study_calendar_id', newId);
+    saveUserState('calendarId', newId);
     syncEntityToCloud('calendarId', newId);
   };
 
@@ -221,21 +233,21 @@ export const App: React.FC = () => {
   const handleAddBill = (newBill: PersonalBill) => {
     const updated = [...personalBills, newBill];
     setPersonalBills(updated);
-    localStorage.setItem('study_personal_bills', JSON.stringify(updated));
+    saveUserState('personalBills', updated);
     syncEntityToCloud('personalBills', updated);
   };
 
   const handleUpdateBill = (updatedBill: PersonalBill) => {
     const updated = personalBills.map((b) => (b.id === updatedBill.id ? updatedBill : b));
     setPersonalBills(updated);
-    localStorage.setItem('study_personal_bills', JSON.stringify(updated));
+    saveUserState('personalBills', updated);
     syncEntityToCloud('personalBills', updated);
   };
 
   const handleDeleteBill = (id: string) => {
     const updated = personalBills.filter((b) => b.id !== id);
     setPersonalBills(updated);
-    localStorage.setItem('study_personal_bills', JSON.stringify(updated));
+    saveUserState('personalBills', updated);
     syncEntityToCloud('personalBills', updated);
   };
 
@@ -243,21 +255,21 @@ export const App: React.FC = () => {
   const handleAddAppointment = (newApp: PersonalAppointment) => {
     const updated = [...personalAppointments, newApp];
     setPersonalAppointments(updated);
-    localStorage.setItem('study_personal_appointments', JSON.stringify(updated));
+    saveUserState('personalAppointments', updated);
     syncEntityToCloud('personalAppointments', updated);
   };
 
   const handleUpdateAppointment = (updatedApp: PersonalAppointment) => {
     const updated = personalAppointments.map((a) => (a.id === updatedApp.id ? updatedApp : a));
     setPersonalAppointments(updated);
-    localStorage.setItem('study_personal_appointments', JSON.stringify(updated));
+    saveUserState('personalAppointments', updated);
     syncEntityToCloud('personalAppointments', updated);
   };
 
   const handleDeleteAppointment = (id: string) => {
     const updated = personalAppointments.filter((a) => a.id !== id);
     setPersonalAppointments(updated);
-    localStorage.setItem('study_personal_appointments', JSON.stringify(updated));
+    saveUserState('personalAppointments', updated);
     syncEntityToCloud('personalAppointments', updated);
   };
 
@@ -283,45 +295,91 @@ export const App: React.FC = () => {
     return () => unsub();
   }, []);
 
-  // Real-time Firestore sync listener: sincroniza com o UID autenticado ou com 'principal' (fallback)
+  // Real-time Firestore sync listener: sincroniza exclusivamente com o UID autenticado (isolamento por usuário)
   useEffect(() => {
-    const docId = firebaseUser && isEmailAllowed(firebaseUser.email) ? firebaseUser.uid : 'principal';
+    if (!firebaseUser) return;
+    const docId = firebaseUser.uid;
+
+    // Carrega o cache local específico deste usuário imediatamente ao alternar/conectar
+    const userCourses = loadUserState<Course[]>('courses', [], docId);
+    if (userCourses.length > 0) setCourses(userCourses);
+    const userTasks = loadUserState<Task[]>('tasks', [], docId);
+    if (userTasks.length > 0) setTasks(userTasks);
+    const userTopics = loadUserState<StudyTopic[]>('topics', [], docId);
+    if (userTopics.length > 0) setTopics(userTopics);
+    const userSessions = loadUserState<StudySession[]>('sessions', [], docId);
+    if (userSessions.length > 0) setSessions(userSessions);
+    const userNotes = loadUserState<NotebookNote[]>('notes', [], docId);
+    if (userNotes.length > 0) setNotes(userNotes);
+    const userBills = loadUserState<PersonalBill[]>('personalBills', [], docId);
+    if (userBills.length > 0) setPersonalBills(userBills);
+    const userApps = loadUserState<PersonalAppointment[]>('personalAppointments', [], docId);
+    if (userApps.length > 0) setPersonalAppointments(userApps);
+    const userCal = loadUserState<string>('calendarId', firebaseUser.email || '', docId);
+    if (userCal) setCalendarId(userCal);
+
     const unsub = subscribeToFirestore(docId, (data, metadata) => {
-      if (!data) return;
       // Ignora evento disparado pelas nossas próprias alterações em andamento locais
       if (metadata?.hasPendingWrites) return;
 
+      if (!data) {
+        // Novo estudante detectado! Inicializa o dashboard deste estudante com o perfil e template isolado
+        const initialDashboard = {
+          userEmail: firebaseUser.email || '',
+          displayName: firebaseUser.displayName || '',
+          courses: initialCourses,
+          tasks: initialTasks,
+          topics: initialTopics,
+          sessions: initialSessions,
+          notes: initialNotes,
+          personalBills: initialPersonalBills,
+          personalAppointments: initialPersonalAppointments,
+          calendarId: firebaseUser.email || '',
+          createdAt: new Date().toISOString(),
+        };
+        saveToFirestore(docId, initialDashboard);
+        setCourses(initialCourses);
+        setTasks(initialTasks);
+        setTopics(initialTopics);
+        setSessions(initialSessions);
+        setNotes(initialNotes);
+        setPersonalBills(initialPersonalBills);
+        setPersonalAppointments(initialPersonalAppointments);
+        setCalendarId(firebaseUser.email || '');
+        return;
+      }
+
       if (Array.isArray(data.courses)) {
         setCourses(data.courses);
-        localStorage.setItem('study_courses', JSON.stringify(data.courses));
+        saveUserState('courses', data.courses, docId);
       }
       if (Array.isArray(data.tasks)) {
         setTasks(data.tasks);
-        localStorage.setItem('study_tasks', JSON.stringify(data.tasks));
+        saveUserState('tasks', data.tasks, docId);
       }
       if (Array.isArray(data.topics)) {
         setTopics(data.topics);
-        localStorage.setItem('study_topics', JSON.stringify(data.topics));
+        saveUserState('topics', data.topics, docId);
       }
       if (Array.isArray(data.sessions)) {
         setSessions(data.sessions);
-        localStorage.setItem('study_sessions', JSON.stringify(data.sessions));
+        saveUserState('sessions', data.sessions, docId);
       }
       if (Array.isArray(data.notes)) {
         setNotes(data.notes);
-        localStorage.setItem('study_notes', JSON.stringify(data.notes));
+        saveUserState('notes', data.notes, docId);
       }
       if (Array.isArray(data.personalBills)) {
         setPersonalBills(data.personalBills);
-        localStorage.setItem('study_personal_bills', JSON.stringify(data.personalBills));
+        saveUserState('personalBills', data.personalBills, docId);
       }
       if (Array.isArray(data.personalAppointments)) {
         setPersonalAppointments(data.personalAppointments);
-        localStorage.setItem('study_personal_appointments', JSON.stringify(data.personalAppointments));
+        saveUserState('personalAppointments', data.personalAppointments, docId);
       }
       if (typeof data.calendarId === 'string') {
         setCalendarId(data.calendarId);
-        localStorage.setItem('study_calendar_id', data.calendarId);
+        saveUserState('calendarId', data.calendarId, docId);
       }
     });
 
@@ -483,37 +541,37 @@ export const App: React.FC = () => {
         const parsed = JSON.parse(event.target?.result as string);
         if (Array.isArray(parsed.courses)) {
           setCourses(parsed.courses);
-          localStorage.setItem('study_courses', JSON.stringify(parsed.courses));
+          saveUserState('courses', parsed.courses);
           syncEntityToCloud('courses', parsed.courses);
         }
         if (Array.isArray(parsed.tasks)) {
           setTasks(parsed.tasks);
-          localStorage.setItem('study_tasks', JSON.stringify(parsed.tasks));
+          saveUserState('tasks', parsed.tasks);
           syncEntityToCloud('tasks', parsed.tasks);
         }
         if (Array.isArray(parsed.topics)) {
           setTopics(parsed.topics);
-          localStorage.setItem('study_topics', JSON.stringify(parsed.topics));
+          saveUserState('topics', parsed.topics);
           syncEntityToCloud('topics', parsed.topics);
         }
         if (Array.isArray(parsed.sessions)) {
           setSessions(parsed.sessions);
-          localStorage.setItem('study_sessions', JSON.stringify(parsed.sessions));
+          saveUserState('sessions', parsed.sessions);
           syncEntityToCloud('sessions', parsed.sessions);
         }
         if (Array.isArray(parsed.notes)) {
           setNotes(parsed.notes);
-          localStorage.setItem('study_notes', JSON.stringify(parsed.notes));
+          saveUserState('notes', parsed.notes);
           syncEntityToCloud('notes', parsed.notes);
         }
         if (Array.isArray(parsed.personalBills)) {
           setPersonalBills(parsed.personalBills);
-          localStorage.setItem('study_personal_bills', JSON.stringify(parsed.personalBills));
+          saveUserState('personalBills', parsed.personalBills);
           syncEntityToCloud('personalBills', parsed.personalBills);
         }
         if (Array.isArray(parsed.personalAppointments)) {
           setPersonalAppointments(parsed.personalAppointments);
-          localStorage.setItem('study_personal_appointments', JSON.stringify(parsed.personalAppointments));
+          saveUserState('personalAppointments', parsed.personalAppointments);
           syncEntityToCloud('personalAppointments', parsed.personalAppointments);
         }
         showToast('success', 'Backup Restaurado!', 'Todos os seus dados foram restaurados e sincronizados com a nuvem.');

@@ -1,10 +1,185 @@
 rules_version = '2';
 
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: student_dashboards
+// Document ID: {userId} (Firebase Auth UID of the student, or 'principal' for demo)
+//
+// Fields:
+//   - courses: list (optional, max 100 items) - Array of Course objects
+//   - tasks: list (optional, max 1000 items) - Array of Task objects
+//   - topics: list (optional, max 1000 items) - Array of StudyTopic objects
+//   - sessions: list (optional, max 2000 items) - Array of StudySession objects
+//   - notes: list (optional, max 500 items) - Array of NotebookNote objects
+//   - personalBills: list (optional, max 500 items) - Array of PersonalBill objects
+//   - personalAppointments: list (optional, max 500 items) - Array of PersonalAppointment objects
+//   - calendarId: string (optional, 1-254 chars) - Google Calendar ID/email
+//   - updatedAt: string (optional, max 50 chars) or timestamp - Last sync timestamp
+//   - createdAt: string (optional, max 50 chars, immutable) or timestamp - Creation timestamp
+//   - userId: string (optional, max 128 chars, immutable) - Firebase Auth UID matching doc ID
+//   - email: string (optional, 3-254 chars) - Student email address
+//   - userEmail: string (optional, 3-254 chars) - Student profile email
+//   - displayName: string (optional, 1-100 chars) - Student display name
+//
+// ===============================================================
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Permite leitura e escrita apenas para usuários autenticados
-    match /student_dashboards/{document=**} {
-      allow read, write: if request.auth != null;
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the request is from an authenticated user
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if the authenticated user is the document owner
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Check if this is the legacy demo/guest document
+    function isPrincipal(userId) {
+      return userId == 'principal';
+    }
+
+    // Check if the caller is an administrator (via custom claim or verified bootstrap email)
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.get('admin', false) == true ||
+        (request.auth.token.email == 'nicolasplcoelho@gmail.com' && request.auth.token.email_verified == true)
+      );
+    }
+
+    // Ensure userId field matches the authenticated user on create
+    function uidUnchanged(userId) {
+      return !('userId' in request.resource.data) || request.resource.data.userId == userId;
+    }
+
+    // Ensure userId field is immutable on update
+    function uidNotModified() {
+      return !('userId' in request.resource.data) ||
+             !('userId' in resource.data) ||
+             request.resource.data.userId == resource.data.userId;
+    }
+
+    // Ensure createdAt field is immutable on update
+    function createdAtNotModified() {
+      return !('createdAt' in request.resource.data) ||
+             !('createdAt' in resource.data) ||
+             request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    // Validate that only allowed fields exist in the document (prevents schema pollution)
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // Validate optional list with size limit (prevents resource exhaustion / DoS)
+    function isValidOptionalList(field, maxSize) {
+      return !(field in request.resource.data) ||
+             (request.resource.data[field] is list && request.resource.data[field].size() <= maxSize);
+    }
+
+    // Validate optional string with length limits
+    function isValidOptionalString(field, minLen, maxLen) {
+      return !(field in request.resource.data) ||
+             (request.resource.data[field] is string &&
+              request.resource.data[field].size() >= minLen &&
+              request.resource.data[field].size() <= maxLen);
+    }
+
+    // Validate createdAt is either a valid ISO date string or Firestore timestamp
+    function isValidCreatedAt() {
+      return !('createdAt' in request.resource.data) ||
+             (request.resource.data.createdAt is string && request.resource.data.createdAt.size() <= 50) ||
+             (request.resource.data.createdAt is timestamp);
+    }
+
+    // Validate updatedAt is either a valid ISO date string or Firestore timestamp
+    function isValidUpdatedAt() {
+      return !('updatedAt' in request.resource.data) ||
+             (request.resource.data.updatedAt is string && request.resource.data.updatedAt.size() <= 50) ||
+             (request.resource.data.updatedAt is timestamp);
+    }
+
+    // ===============================================================
+    // Domain Validator (Validator Function Pattern)
+    // Used in BOTH create and update rules to eliminate update bypass vulnerabilities
+    // ===============================================================
+    function isValidDashboard(data) {
+      return hasOnlyAllowedFields([
+        'courses',
+        'tasks',
+        'topics',
+        'sessions',
+        'notes',
+        'personalBills',
+        'personalAppointments',
+        'calendarId',
+        'updatedAt',
+        'createdAt',
+        'userId',
+        'email',
+        'userEmail',
+        'displayName'
+      ]) &&
+      isValidOptionalList('courses', 100) &&
+      isValidOptionalList('tasks', 1000) &&
+      isValidOptionalList('topics', 1000) &&
+      isValidOptionalList('sessions', 2000) &&
+      isValidOptionalList('notes', 500) &&
+      isValidOptionalList('personalBills', 500) &&
+      isValidOptionalList('personalAppointments', 500) &&
+      isValidOptionalString('calendarId', 1, 254) &&
+      isValidOptionalString('email', 3, 254) &&
+      isValidOptionalString('userEmail', 3, 254) &&
+      isValidOptionalString('displayName', 1, 100) &&
+      isValidOptionalString('userId', 1, 128) &&
+      isValidCreatedAt() &&
+      isValidUpdatedAt();
+    }
+
+    // ===============================================================
+    // Security Rules
+    // ===============================================================
+
+    // Root: Default deny all reads and writes
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Multi-tenant student dashboard documents
+    match /student_dashboards/{userId} {
+      // Direct document get:
+      // - Authenticated students can get only their own document
+      // - The legacy demo document 'principal' can be read by demo/guest visitors
+      allow get: if isOwner(userId) || isPrincipal(userId);
+
+      // Deny collection queries to prevent tenant enumeration attacks
+      allow list: if false;
+
+      // Create rule:
+      // - Students can create only their own document with valid schema
+      // - Only administrators can create/initialize the demo 'principal' document
+      allow create: if (isOwner(userId) && !isPrincipal(userId) && isValidDashboard(request.resource.data) && uidUnchanged(userId))
+                    || (isPrincipal(userId) && isAdmin() && isValidDashboard(request.resource.data));
+
+      // Update rule:
+      // - Students can update only their own document with valid schema, immutable userId, and immutable createdAt
+      // - Only administrators can update the demo 'principal' document
+      allow update: if (isOwner(userId) && !isPrincipal(userId) && isValidDashboard(request.resource.data) && uidNotModified() && createdAtNotModified())
+                    || (isPrincipal(userId) && isAdmin() && isValidDashboard(request.resource.data));
+
+      // Delete rule:
+      // - Students can delete only their own document
+      // - Only administrators can delete the demo 'principal' document
+      allow delete: if (isOwner(userId) && !isPrincipal(userId))
+                    || (isPrincipal(userId) && isAdmin());
     }
   }
 }

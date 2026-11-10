@@ -59,12 +59,13 @@ function parseFirestoreValue(val: any): any {
   return val;
 }
 
-async function fetchDashboardData(): Promise<{
+async function fetchDashboardData(userId: string = DEFAULT_DASHBOARD_ID): Promise<{
   courses: Course[];
   tasks: Task[];
   topics: StudyTopic[];
+  userEmail?: string;
 }> {
-  const url = `https://firestore.googleapis.com/v1/projects/${DEFAULT_PROJECT_ID}/databases/(default)/documents/student_dashboards/${DEFAULT_DASHBOARD_ID}`;
+  const url = `https://firestore.googleapis.com/v1/projects/${DEFAULT_PROJECT_ID}/databases/(default)/documents/student_dashboards/${userId}`;
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`Falha ao buscar documento no Firestore (${res.status} ${res.statusText})`);
@@ -78,6 +79,12 @@ async function fetchDashboardData(): Promise<{
   }
 
   return {
+    courses: Array.isArray(parsed.courses) ? parsed.courses : [],
+    tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
+    topics: Array.isArray(parsed.topics) ? parsed.topics : [],
+    userEmail: parsed.userEmail || parsed.email,
+  };
+}
     courses: parsed.courses || [],
     tasks: parsed.tasks || [],
     topics: parsed.topics || [],
@@ -109,7 +116,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const in7Days = new Date(brDate.getTime() + 7 * 86400000);
     const in7DaysStr = in7Days.toISOString().split('T')[0];
 
-    const { courses, tasks, topics } = await fetchDashboardData();
+    const requestedUserId =
+      (req.query.userId as string) ||
+      (req.query.uid as string) ||
+      (req.body && req.body.userId) ||
+      DEFAULT_DASHBOARD_ID;
+
+    const { courses, tasks, topics, userEmail } = await fetchDashboardData(requestedUserId);
+
+    const recipientEmail =
+      (req.query.email as string) ||
+      (req.body && req.body.email) ||
+      userEmail ||
+      TARGET_EMAIL;
 
     // Permite obter a chave do Resend via:
     // 1. Variável de ambiente Vercel (RESEND_API_KEY)
@@ -246,7 +265,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const resend = new Resend(apiKey);
       const emailResult = await resend.emails.send({
         from: 'Painel do Estudante <onboarding@resend.dev>',
-        to: TARGET_EMAIL,
+        to: recipientEmail,
         subject: `📚 [Painel do Estudante] Resumo de Hoje: ${totalPendencias} pendência(s)`,
         html: emailHtml,
       });
@@ -260,8 +279,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       return res.status(200).json({
         success: true,
-        message: `E-mail diário enviado com sucesso para ${TARGET_EMAIL}!`,
+        message: `E-mail diário enviado com sucesso para ${recipientEmail}!`,
         id: emailResult.data?.id,
+        targetEmail: recipientEmail,
         pendencias: {
           tarefasUrgentes: dueTodayOrOverdue.length,
           provasProximas: upcomingExams.length,
@@ -275,7 +295,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       success: true,
       mode: 'preview',
       message: 'Resumo gerado com sucesso! Para envio real por e-mail, adicione a variável RESEND_API_KEY no painel da Vercel.',
-      targetEmail: TARGET_EMAIL,
+      targetEmail: recipientEmail,
       pendencias: {
         tarefasUrgentes: dueTodayOrOverdue.length,
         provasProximas: upcomingExams.length,

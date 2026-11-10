@@ -127,16 +127,8 @@ async function saveStudentDashboard(userId: string = DEFAULT_DASHBOARD_ID, data:
     }
   };
 
-  // Salva no documento alvo e espelha em todos os identificadores ativos do estudante
-  const docsToUpdate = new Set<string>([
-    targetDoc,
-    DEFAULT_DASHBOARD_ID,
-    'Mu75zw4F5je3c9TfbJaUE0zIm1z2',
-  ]);
-
-  for (const docName of docsToUpdate) {
-    await saveToDoc(docName);
-  }
+  // Salva no documento alvo especificado pelo usuário (isolamento multi-tenant)
+  await saveToDoc(targetDoc);
 }
 
 const getLocalDateStr = () => {

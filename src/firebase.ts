@@ -255,6 +255,8 @@ export function subscribeToFirestore(
     (snapshot: any) => {
       if (snapshot.exists()) {
         onData(snapshot.data(), snapshot.metadata);
+      } else {
+        onData(null, snapshot.metadata);
       }
     },
     (err: any) => {

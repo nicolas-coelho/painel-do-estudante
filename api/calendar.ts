@@ -161,22 +161,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
-  // 1. Obter configurações da agenda (do query param, do Firestore ou de env/default)
+  const targetUserDoc = (req.query.userId as string) || (req.query.uid as string) || DEFAULT_DASHBOARD_ID;
+
   let icalUrl =
     (req.query.ical as string) ||
-    process.env.GOOGLE_CALENDAR_ICAL_URL ||
-    DEFAULT_SECRET_ICAL;
+    process.env.GOOGLE_CALENDAR_ICAL_URL;
+
   let calendarEmail =
     (req.query.email as string) ||
     (req.query.calendarId as string) ||
-    process.env.GOOGLE_CALENDAR_EMAIL ||
-    'nicolasplcoelho@gmail.com';
+    process.env.GOOGLE_CALENDAR_EMAIL;
 
-  // Se não foi passado via query nem env, tenta ler do Firestore
+  // Se não foi passado via query nem env, tenta ler do documento do usuário no Firestore
   if (!icalUrl && !calendarEmail) {
     try {
       getFirebaseAdminApp();
-      const snap = await admin.firestore().collection('student_dashboards').doc(DEFAULT_DASHBOARD_ID).get();
+      const snap = await admin.firestore().collection('student_dashboards').doc(targetUserDoc).get();
       if (snap.exists) {
         const data = snap.data() || {};
         if (data.calendarIcalUrl) icalUrl = data.calendarIcalUrl;
@@ -187,8 +187,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // Fallback para e-mail padrão do projeto se nada configurado
-  if (!calendarEmail) {
+  // Fallbacks padrão caso nenhum valor tenha sido configurado ainda
+  if (!icalUrl && !calendarEmail) {
+    icalUrl = DEFAULT_SECRET_ICAL;
     calendarEmail = 'nicolasplcoelho@gmail.com';
   }
 

@@ -17,6 +17,7 @@ import {
   Calendar,
   Check,
   AlertCircle,
+  Share2,
 } from 'lucide-react';
 
 interface CoursesTabProps {
@@ -62,6 +63,10 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
 
   // New syllabus item state inside edit modal
   const [newSyllabusTitle, setNewSyllabusTitle] = useState('');
+
+  // Compartilhamento e Importação colaborativa de disciplinas (10+ usuários)
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importJsonText, setImportJsonText] = useState('');
 
   const filteredCourses = courses.filter((c) => {
     const matchesStatus = filter === 'all' ? true : c.inProgress;
@@ -236,6 +241,88 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
     onUpdateCourse(editingCourse);
   };
 
+  const handleShareCourse = (course: Course) => {
+    const shareable = {
+      code: course.code,
+      name: course.name,
+      professor: course.professor,
+      schedule: course.schedule,
+      roomOrLink: course.roomOrLink,
+      semester: course.semester,
+      year: course.year,
+      color: course.color,
+      targetAverage: course.targetAverage,
+      grades: (course.grades || []).map((g) => ({
+        name: g.name,
+        weight: g.weight,
+        maxGrade: g.maxGrade,
+        date: g.date,
+        type: g.type,
+      })),
+      syllabus: (course.syllabus || []).map((s) => ({
+        title: s.title,
+        notes: s.notes,
+      })),
+    };
+
+    const json = JSON.stringify(shareable, null, 2);
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(json);
+      showToast('success', 'Disciplina Copiada!', `Dados e provas de "${course.code} - ${course.name}" copiados para a área de transferência. Cole para seus colegas importarem!`);
+    }
+  };
+
+  const handleImportCourse = (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const parsed = JSON.parse(importJsonText.trim());
+      if (!parsed.name || !parsed.code) {
+        showToast('error', 'Formato Inválido', 'O código da disciplina precisa conter pelo menos "code" e "name".');
+        return;
+      }
+
+      const importedCourse: Course = {
+        id: `course-${Date.now()}`,
+        name: String(parsed.name).trim(),
+        code: String(parsed.code).trim().toUpperCase(),
+        professor: parsed.professor ? String(parsed.professor).trim() : '',
+        schedule: parsed.schedule ? String(parsed.schedule).trim() : '',
+        roomOrLink: parsed.roomOrLink ? String(parsed.roomOrLink).trim() : '',
+        semester: parsed.semester ? String(parsed.semester).trim() : '1º Semestre',
+        year: parsed.year ? String(parsed.year).trim() : '2026',
+        inProgress: true,
+        color: parsed.color || '#3b82f6',
+        targetAverage: typeof parsed.targetAverage === 'number' ? parsed.targetAverage : 7.0,
+        grades: Array.isArray(parsed.grades)
+          ? parsed.grades.map((g: any, i: number) => ({
+              id: `grade-${Date.now()}-${i}`,
+              name: g.name || `Avaliação ${i + 1}`,
+              weight: typeof g.weight === 'number' ? g.weight : 1,
+              maxGrade: typeof g.maxGrade === 'number' ? g.maxGrade : 10,
+              grade: null,
+              date: g.date || undefined,
+              type: g.type || 'Prova',
+            }))
+          : [],
+        syllabus: Array.isArray(parsed.syllabus)
+          ? parsed.syllabus.map((s: any, i: number) => ({
+              id: `syl-${Date.now()}-${i}`,
+              title: s.title || `Tópico ${i + 1}`,
+              completed: false,
+              notes: s.notes || undefined,
+            }))
+          : [],
+      };
+
+      onAddCourse(importedCourse);
+      showToast('success', 'Disciplina Importada!', `"${importedCourse.code} - ${importedCourse.name}" com ${importedCourse.grades?.length || 0} avaliações foi adicionada ao seu painel!`);
+      setIsImportModalOpen(false);
+      setImportJsonText('');
+    } catch {
+      showToast('error', 'Código Inválido', 'Não foi possível ler os dados da disciplina. Verifique se copiou todo o JSON.');
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Controls & Filter bar */}
@@ -278,13 +365,24 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
           </div>
         </div>
 
-        <button
-          onClick={() => setIsAddModalOpen(true)}
-          className="flex items-center gap-2 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg shadow-sm transition-all"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Nova Disciplina</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsImportModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#efeeea] hover:bg-[#e4e3de] dark:bg-[#2a2a2a] dark:hover:bg-[#333] text-[#37352f] dark:text-[#f3f3f2] text-xs font-medium rounded-lg transition-all border border-[#e2e1de] dark:border-[#383838]"
+            title="Importar disciplina compartilhada por um colega"
+          >
+            <Share2 className="w-3.5 h-3.5 text-blue-500" />
+            <span>Importar de Colega</span>
+          </button>
+
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="flex items-center gap-2 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg shadow-sm transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Nova Disciplina</span>
+          </button>
+        </div>
       </div>
 
       {/* Courses Cards Grid */}
@@ -319,6 +417,16 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
                     </h3>
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleShareCourse(c);
+                      }}
+                      className="p-1 text-[#787774] hover:text-blue-600 dark:hover:text-blue-400 rounded transition-colors"
+                      title="Copiar dados da disciplina para compartilhar com colegas"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                    </button>
                     <span className="p-1 text-[#787774] hover:text-blue-600 dark:hover:text-blue-400" title="Editar disciplina">
                       <Edit3 className="w-3.5 h-3.5" />
                     </span>
@@ -1120,6 +1228,65 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all font-medium shadow-sm"
                 >
                   Criar Disciplina
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Importar Disciplina Compartilhada por Colega */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#202020] rounded-2xl border border-[#e9e9e8] dark:border-[#333] w-full max-w-lg shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-blue-100 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 rounded-lg">
+                  <Share2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-[#37352f] dark:text-[#f3f3f2]">Importar Disciplina de Colega</h3>
+                  <p className="text-xs text-[#787774] dark:text-[#9b9a97]">
+                    Cole o código JSON que seu colega copiou para importar o plano e datas de provas.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsImportModalOpen(false)}
+                className="p-1 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg text-stone-400"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleImportCourse} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-[#787774] dark:text-[#9b9a97] mb-1 font-medium">
+                  Código JSON Compartilhado:
+                </label>
+                <textarea
+                  required
+                  rows={8}
+                  placeholder="Cole aqui o JSON da disciplina gerado pelo seu colega..."
+                  value={importJsonText}
+                  onChange={(e) => setImportJsonText(e.target.value)}
+                  className="w-full font-mono text-xs p-3 rounded-xl border border-[#e9e9e8] dark:border-[#333] bg-stone-50 dark:bg-[#1a1a1a] focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsImportModalOpen(false)}
+                  className="px-4 py-2 border border-[#e9e9e8] dark:border-[#333] rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 transition-all font-medium"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all font-medium shadow-sm"
+                >
+                  Importar para o Meu Painel
                 </button>
               </div>
             </form>
