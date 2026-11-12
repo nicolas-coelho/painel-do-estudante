@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Course, Task, TaskStatus, TaskType, PersonalBill, PersonalAppointment } from '../types';
 import { useNotification } from '../context/NotificationContext';
-import { formatDateBR } from '../dateUtils';
+import { formatDateBR, parseDateToISO } from '../dateUtils';
 import { getClassesForDayOfWeek, getEventDateStr, getEventTimeStr } from '../calendarUtils';
 import { getSavedCalendarToken, fetchGoogleCalendarEvents, GoogleCalendarEvent } from '../googleCalendar';
 import {
@@ -26,6 +26,7 @@ import {
   MapPin,
   RefreshCw,
   Wallet,
+  GripVertical,
 } from 'lucide-react';
 
 interface HomeTabProps {
@@ -175,6 +176,70 @@ export const HomeTab: React.FC<HomeTabProps> = ({
         return 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200 dark:border-blue-900/50';
       default:
         return 'bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300 border border-stone-200 dark:border-stone-700';
+    }
+  };
+
+  // Drag and drop state for the Kanban board
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dragOverColId, setDragOverColId] = useState<TaskStatus | null>(null);
+
+  // Converte data para timestamp numérico para ordenação (datas mais próximas no topo)
+  const getTaskTimestamp = (dueDate?: string | null): number => {
+    if (!dueDate || !dueDate.trim()) return Infinity;
+    const iso = parseDateToISO(dueDate);
+    const time = new Date(iso || dueDate).getTime();
+    return isNaN(time) ? Infinity : time;
+  };
+
+  // Drag and drop handlers
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    e.dataTransfer.setData('text/plain', id);
+    e.dataTransfer.effectAllowed = 'move';
+    setDraggedTaskId(id);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedTaskId(null);
+    setDragOverColId(null);
+  };
+
+  const handleDragOver = (e: React.DragEvent, colId: TaskStatus) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverColId !== colId) {
+      setDragOverColId(colId);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent, colId: TaskStatus) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      if (dragOverColId === colId) {
+        setDragOverColId(null);
+      }
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent, targetStatus: TaskStatus) => {
+    e.preventDefault();
+    setDragOverColId(null);
+    setDraggedTaskId(null);
+
+    const taskId = e.dataTransfer.getData('text/plain');
+    if (!taskId) return;
+
+    const taskToMove = tasks.find((t) => t.id === taskId);
+    if (taskToMove && taskToMove.status !== targetStatus) {
+      onUpdateTask({
+        ...taskToMove,
+        status: targetStatus,
+      });
+      showToast(
+        'success',
+        'Status Atualizado',
+        `A atividade "${taskToMove.name}" foi movida para ${
+          targetStatus === 'todo' ? 'A Fazer' : targetStatus === 'in_progress' ? 'Em Andamento' : 'Concluído'
+        }.`
+      );
     }
   };
 
@@ -494,15 +559,37 @@ export const HomeTab: React.FC<HomeTabProps> = ({
           </div>
         </div>
 
+        {/* Helpful Hint */}
+        <div className="flex items-center gap-2 text-[11px] text-[#787774] dark:text-[#9b9a97] bg-white/60 dark:bg-[#202020]/60 px-3 py-1.5 rounded-lg border border-[#e9e9e8] dark:border-[#2f2f2f] w-fit">
+          <GripVertical className="w-3.5 h-3.5 text-blue-500" />
+          <span>Arraste e solte os cartões entre as colunas para mudar o status da tarefa.</span>
+        </div>
+
         {/* 3 Kanban Columns */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {columns.map((col) => {
-            const colTasks = filteredTasks.filter((t) => t.status === col.id);
+            // Ordena as atividades pela data de entrega mais próxima no topo; tarefas sem data ficam no final
+            const colTasks = filteredTasks
+              .filter((t) => t.status === col.id)
+              .sort((a, b) => {
+                const timeA = getTaskTimestamp(a.dueDate);
+                const timeB = getTaskTimestamp(b.dueDate);
+                if (timeA !== timeB) return timeA - timeB;
+                return a.name.localeCompare(b.name, 'pt-BR');
+              });
+            const isOver = dragOverColId === col.id;
 
             return (
               <div
                 key={col.id}
-                className="bg-[#f7f6f3]/80 dark:bg-[#1e1e1e] rounded-xl p-3.5 border border-[#e9e9e8] dark:border-[#2f2f2f] flex flex-col min-h-[380px]"
+                onDragOver={(e) => handleDragOver(e, col.id)}
+                onDragLeave={(e) => handleDragLeave(e, col.id)}
+                onDrop={(e) => handleDrop(e, col.id)}
+                className={`rounded-xl p-3.5 border transition-all flex flex-col min-h-[380px] ${
+                  isOver
+                    ? 'bg-blue-50/60 dark:bg-blue-950/20 border-blue-400 dark:border-blue-500 ring-2 ring-blue-400/20 shadow-md'
+                    : 'bg-[#f7f6f3]/80 dark:bg-[#1e1e1e] border-[#e9e9e8] dark:border-[#2f2f2f]'
+                }`}
               >
                 {/* Column Header */}
                 <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-[#e9e9e8] dark:border-[#2f2f2f]">
@@ -531,26 +618,36 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                 <div className="space-y-2.5 flex-1 overflow-y-auto max-h-[500px] pr-0.5">
                   {colTasks.map((task) => {
                     const course = courses.find((c) => c.id === task.courseId);
-                    const isLate = task.status !== 'done' && task.dueDate < todayStr;
-                    const isDueToday = task.dueDate === todayStr;
+                    const taskIso = parseDateToISO(task.dueDate);
+                    const isLate = task.status !== 'done' && Boolean(taskIso) && new Date(taskIso) < new Date(new Date().setHours(0,0,0,0));
+                    const isDueToday = taskIso ? taskIso === todayStr : task.dueDate === todayStr;
+                    const isDragging = draggedTaskId === task.id;
 
                     return (
                       <div
                         key={task.id}
-                        className="bg-white dark:bg-[#252525] p-3 rounded-lg border border-[#e9e9e8] dark:border-[#333] hover:shadow transition-all space-y-2"
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, task.id)}
+                        onDragEnd={handleDragEnd}
+                        className={`group bg-white dark:bg-[#252525] p-3 rounded-lg border border-[#e9e9e8] dark:border-[#333] hover:border-blue-300 dark:hover:border-blue-500/50 hover:shadow-md transition-all space-y-2 select-none cursor-grab active:cursor-grabbing ${
+                          isDragging ? 'opacity-40 scale-[0.98] ring-2 ring-blue-500 shadow-none' : ''
+                        }`}
                       >
                         <div className="flex items-center justify-between gap-1">
-                          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${getTypeBadge(task.type)}`}>
-                            {task.type}
-                          </span>
-                          {course && (
-                            <span
-                              className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded"
-                              style={{ backgroundColor: `${course.color}18`, color: course.color }}
-                            >
-                              {course.code}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${getTypeBadge(task.type)}`}>
+                              {task.type}
                             </span>
-                          )}
+                            {course && (
+                              <span
+                                className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded"
+                                style={{ backgroundColor: `${course.color}18`, color: course.color }}
+                              >
+                                {course.code}
+                              </span>
+                            )}
+                          </div>
+                          <GripVertical className="w-3.5 h-3.5 text-stone-300 dark:text-stone-600 group-hover:text-stone-500 shrink-0" />
                         </div>
 
                         <h4 className="text-xs font-medium text-[#37352f] dark:text-[#f3f3f2] leading-snug">
