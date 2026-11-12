@@ -27,6 +27,7 @@ import {
   RefreshCw,
   Wallet,
   GripVertical,
+  Pencil,
 } from 'lucide-react';
 
 interface HomeTabProps {
@@ -66,8 +67,9 @@ export const HomeTab: React.FC<HomeTabProps> = ({
   const { showToast, showConfirm } = useNotification();
   const todayStr = getLocalDateStr();
 
-  // Task creation modal
+  // Task creation/edit modal
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [taskName, setTaskName] = useState('');
   const [taskCourseId, setTaskCourseId] = useState(courses[0]?.id || '');
   const [taskStatus, setTaskStatus] = useState<TaskStatus>('todo');
@@ -144,22 +146,60 @@ export const HomeTab: React.FC<HomeTabProps> = ({
     { id: 'done', label: 'Concluído', badgeColor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400' },
   ];
 
-  const handleCreateTask = (e: React.FormEvent) => {
+  const handleOpenCreateTask = (initialStatus: TaskStatus = 'todo', defaultDate: string = todayStr) => {
+    setEditingTask(null);
+    setTaskName('');
+    setTaskCourseId(visibleCourses[0]?.id || courses[0]?.id || '');
+    setTaskStatus(initialStatus);
+    setTaskType('Trabalho');
+    setTaskDueDate(defaultDate);
+    setTaskNotes('');
+    setIsTaskModalOpen(true);
+  };
+
+  const handleOpenEditTask = (task: Task) => {
+    setEditingTask(task);
+    setTaskName(task.name);
+    setTaskCourseId(task.courseId);
+    setTaskStatus(task.status);
+    setTaskType(task.type);
+    setTaskDueDate(parseDateToISO(task.dueDate) || task.dueDate || todayStr);
+    setTaskNotes(task.notes || '');
+    setIsTaskModalOpen(true);
+  };
+
+  const handleSaveTask = (e: React.FormEvent) => {
     e.preventDefault();
     if (!taskName.trim()) return;
 
-    const newTask: Task = {
-      id: `task-${Date.now()}`,
-      name: taskName.trim(),
-      courseId: taskCourseId || visibleCourses[0]?.id || courses[0]?.id || '',
-      status: taskStatus,
-      type: taskType,
-      dueDate: taskDueDate || todayStr,
-      notes: taskNotes.trim(),
-    };
+    if (editingTask) {
+      const updated: Task = {
+        ...editingTask,
+        name: taskName.trim(),
+        courseId: taskCourseId || visibleCourses[0]?.id || courses[0]?.id || '',
+        status: taskStatus,
+        type: taskType,
+        dueDate: taskDueDate || editingTask.dueDate,
+        notes: taskNotes.trim(),
+      };
+      onUpdateTask(updated);
+      showToast('success', 'Atividade Atualizada', `"${taskName.trim()}" foi atualizada com sucesso.`);
+    } else {
+      const newTask: Task = {
+        id: `task-${Date.now()}`,
+        name: taskName.trim(),
+        courseId: taskCourseId || visibleCourses[0]?.id || courses[0]?.id || '',
+        status: taskStatus,
+        type: taskType,
+        dueDate: taskDueDate || todayStr,
+        notes: taskNotes.trim(),
+      };
+      onAddTask(newTask);
+      showToast('success', 'Atividade Criada', `"${taskName.trim()}" foi adicionada.`);
+    }
 
-    onAddTask(newTask);
     setIsTaskModalOpen(false);
+    setEditingTask(null);
     setTaskName('');
     setTaskNotes('');
   };
@@ -309,10 +349,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
           </div>
 
           <button
-            onClick={() => {
-              setTaskDueDate(todayStr);
-              setIsTaskModalOpen(true);
-            }}
+            onClick={() => handleOpenCreateTask('todo', todayStr)}
             className="self-start sm:self-auto flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium shadow-sm transition-all"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -434,9 +471,11 @@ export const HomeTab: React.FC<HomeTabProps> = ({
 
                       <div className="flex-1 min-w-0">
                         <h4
-                          className={`text-sm font-semibold text-[#37352f] dark:text-[#f3f3f2] ${
+                          onClick={() => handleOpenEditTask(task)}
+                          className={`text-sm font-semibold text-[#37352f] dark:text-[#f3f3f2] cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors ${
                             isDone ? 'line-through text-[#787774] dark:text-[#9b9a97]' : ''
                           }`}
+                          title="Clique para editar prazo ou descrição"
                         >
                           {task.name}
                         </h4>
@@ -458,6 +497,14 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                     </span>
 
                     <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditTask(task)}
+                        className="p-1 rounded bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-[#787774] hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        title="Editar atividade (prazo, descrição...)"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
                       <button
                         onClick={() =>
                           onUpdateTask({
@@ -492,10 +539,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
             </div>
 
             <button
-              onClick={() => {
-                setTaskDueDate(todayStr);
-                setIsTaskModalOpen(true);
-              }}
+              onClick={() => handleOpenCreateTask('todo', todayStr)}
               className="px-3.5 py-1.5 bg-white dark:bg-[#252525] hover:bg-stone-100 dark:hover:bg-stone-800 text-[#37352f] dark:text-white text-xs font-medium rounded-lg border border-[#e9e9e8] dark:border-[#333] transition-all shadow-sm shrink-0"
             >
               + Adicionar entrega para hoje
@@ -562,7 +606,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
         {/* Helpful Hint */}
         <div className="flex items-center gap-2 text-[11px] text-[#787774] dark:text-[#9b9a97] bg-white/60 dark:bg-[#202020]/60 px-3 py-1.5 rounded-lg border border-[#e9e9e8] dark:border-[#2f2f2f] w-fit">
           <GripVertical className="w-3.5 h-3.5 text-blue-500" />
-          <span>Arraste e solte os cartões entre as colunas para mudar o status da tarefa.</span>
+          <span>Arraste os cartões entre as colunas ou clique em um cartão para editar prazos e detalhes.</span>
         </div>
 
         {/* 3 Kanban Columns */}
@@ -603,10 +647,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                   </div>
 
                   <button
-                    onClick={() => {
-                      setTaskStatus(col.id);
-                      setIsTaskModalOpen(true);
-                    }}
+                    onClick={() => handleOpenCreateTask(col.id, todayStr)}
                     className="p-1 rounded text-[#787774] hover:text-[#37352f] dark:hover:text-white hover:bg-stone-200/60 dark:hover:bg-stone-800 transition-colors"
                     title={`Adicionar tarefa em ${col.label}`}
                   >
@@ -629,7 +670,9 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                         draggable
                         onDragStart={(e) => handleDragStart(e, task.id)}
                         onDragEnd={handleDragEnd}
-                        className={`group bg-white dark:bg-[#252525] p-3 rounded-lg border border-[#e9e9e8] dark:border-[#333] hover:border-blue-300 dark:hover:border-blue-500/50 hover:shadow-md transition-all space-y-2 select-none cursor-grab active:cursor-grabbing ${
+                        onClick={() => handleOpenEditTask(task)}
+                        title="Clique para editar prazo ou descrição"
+                        className={`group bg-white dark:bg-[#252525] p-3 rounded-lg border border-[#e9e9e8] dark:border-[#333] hover:border-blue-300 dark:hover:border-blue-500/50 hover:shadow-md transition-all space-y-2 select-none cursor-pointer ${
                           isDragging ? 'opacity-40 scale-[0.98] ring-2 ring-blue-500 shadow-none' : ''
                         }`}
                       >
@@ -647,10 +690,10 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                               </span>
                             )}
                           </div>
-                          <GripVertical className="w-3.5 h-3.5 text-stone-300 dark:text-stone-600 group-hover:text-stone-500 shrink-0" />
+                          <GripVertical className="w-3.5 h-3.5 text-stone-300 dark:text-stone-600 group-hover:text-stone-500 shrink-0 cursor-grab active:cursor-grabbing" />
                         </div>
 
-                        <h4 className="text-xs font-medium text-[#37352f] dark:text-[#f3f3f2] leading-snug">
+                        <h4 className="text-xs font-medium text-[#37352f] dark:text-[#f3f3f2] leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                           {task.name}
                         </h4>
 
@@ -675,16 +718,18 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                             {isLate && <AlertCircle className="w-3 h-3" />}
                           </div>
 
-                          {/* Quick stage switch */}
+                          {/* Quick stage switch + Edit + Delete */}
                           <div className="flex items-center gap-1">
                             {col.id !== 'todo' && (
                               <button
-                                onClick={() =>
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   onUpdateTask({
                                     ...task,
                                     status: col.id === 'done' ? 'in_progress' : 'todo',
-                                  })
-                                }
+                                  });
+                                }}
                                 className="p-1 text-[10px] bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 rounded transition-colors"
                                 title="Voltar etapa"
                               >
@@ -693,12 +738,14 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                             )}
                             {col.id !== 'done' && (
                               <button
-                                onClick={() =>
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   onUpdateTask({
                                     ...task,
                                     status: col.id === 'todo' ? 'in_progress' : 'done',
-                                  })
-                                }
+                                  });
+                                }}
                                 className="p-1 text-[10px] bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 rounded transition-colors"
                                 title="Avançar etapa"
                               >
@@ -706,7 +753,20 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                               </button>
                             )}
                             <button
-                              onClick={() => {
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenEditTask(task);
+                              }}
+                              className="p-1 text-stone-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-stone-100 dark:hover:bg-stone-800 rounded transition-colors ml-0.5"
+                              title="Editar atividade (prazo, descrição...)"
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 showConfirm({
                                   title: 'Excluir Tarefa',
                                   message: `Tem certeza que deseja excluir a atividade "${task.name}"?`,
@@ -1204,10 +1264,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
 
               {/* Quick Add for Selected Day */}
               <button
-                onClick={() => {
-                  setTaskDueDate(selectedCalendarDate);
-                  setIsTaskModalOpen(true);
-                }}
+                onClick={() => handleOpenCreateTask('todo', selectedCalendarDate)}
                 className="w-full py-2 px-3 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-[#37352f] dark:text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -1254,25 +1311,37 @@ export const HomeTab: React.FC<HomeTabProps> = ({
       </section>
 
       {/* ======================================================== */}
-      {/* MODAL: ADICIONAR NOVA TAREFA / ENTREGA                   */}
+      {/* MODAL: ADICIONAR / EDITAR TAREFA OU ENTREGA              */}
       {/* ======================================================== */}
       {isTaskModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white dark:bg-[#202020] rounded-2xl border border-[#e9e9e8] dark:border-[#2f2f2f] w-full max-w-md shadow-2xl p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-base text-[#37352f] dark:text-[#f3f3f2] flex items-center gap-2">
-                <Plus className="w-4 h-4 text-blue-600" />
-                <span>Nova Atividade / Entrega</span>
+                {editingTask ? (
+                  <>
+                    <Pencil className="w-4 h-4 text-blue-600" />
+                    <span>Editar Atividade / Entrega</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-4 h-4 text-blue-600" />
+                    <span>Nova Atividade / Entrega</span>
+                  </>
+                )}
               </h3>
               <button
-                onClick={() => setIsTaskModalOpen(false)}
+                onClick={() => {
+                  setIsTaskModalOpen(false);
+                  setEditingTask(null);
+                }}
                 className="p-1 text-[#787774] hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateTask} className="space-y-4 text-xs md:text-sm">
+            <form onSubmit={handleSaveTask} className="space-y-4 text-xs md:text-sm">
               <div>
                 <label className="block text-[#787774] dark:text-[#9b9a97] mb-1 font-medium text-xs">
                   Nome da Atividade / Entrega *
@@ -1326,7 +1395,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[#787774] dark:text-[#9b9a97] mb-1 font-medium text-xs">
-                    Status Inicial
+                    {editingTask ? 'Status' : 'Status Inicial'}
                   </label>
                   <select
                     value={taskStatus}
@@ -1368,7 +1437,10 @@ export const HomeTab: React.FC<HomeTabProps> = ({
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setIsTaskModalOpen(false)}
+                  onClick={() => {
+                    setIsTaskModalOpen(false);
+                    setEditingTask(null);
+                  }}
                   className="px-3.5 py-2 rounded-lg text-xs font-medium hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
                 >
                   Cancelar
@@ -1377,7 +1449,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                   type="submit"
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium shadow-sm transition-colors"
                 >
-                  Salvar Atividade
+                  {editingTask ? 'Salvar Alterações' : 'Salvar Atividade'}
                 </button>
               </div>
             </form>

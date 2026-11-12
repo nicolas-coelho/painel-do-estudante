@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Task, Course, TaskStatus, TaskType } from '../types';
 import { useNotification } from '../context/NotificationContext';
 import { formatDateBR, parseDateToISO } from '../dateUtils';
-import { Plus, Calendar, AlertCircle, Trash2, X, GripVertical } from 'lucide-react';
+import { Plus, Calendar, AlertCircle, Trash2, X, GripVertical, Pencil } from 'lucide-react';
 
 interface TasksKanbanTabProps {
   tasks: Task[];
@@ -22,6 +22,7 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
   const { showToast, showConfirm } = useNotification();
   const [selectedCourse, setSelectedCourse] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverColId, setDragOverColId] = useState<TaskStatus | null>(null);
 
@@ -70,22 +71,60 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
     { id: 'done', label: 'Concluído', badgeColor: 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400' },
   ];
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleOpenCreate = (initialStatus: TaskStatus = 'todo') => {
+    setEditingTask(null);
+    setName('');
+    setCourseId(visibleCourses[0]?.id || courses[0]?.id || '');
+    setStatus(initialStatus);
+    setType('Trabalho');
+    setDueDate(new Date().toISOString().split('T')[0]);
+    setNotes('');
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEdit = (task: Task) => {
+    setEditingTask(task);
+    setName(task.name);
+    setCourseId(task.courseId);
+    setStatus(task.status);
+    setType(task.type);
+    setDueDate(parseDateToISO(task.dueDate) || task.dueDate || '');
+    setNotes(task.notes || '');
+    setIsModalOpen(true);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
-    const newTask: Task = {
-      id: `task-${Date.now()}`,
-      name: name.trim(),
-      courseId: courseId || visibleCourses[0]?.id || courses[0]?.id || '',
-      status,
-      type,
-      dueDate: dueDate || new Date().toISOString().split('T')[0],
-      notes: notes.trim(),
-    };
+    if (editingTask) {
+      const updated: Task = {
+        ...editingTask,
+        name: name.trim(),
+        courseId: courseId || visibleCourses[0]?.id || courses[0]?.id || '',
+        status,
+        type,
+        dueDate: dueDate || editingTask.dueDate,
+        notes: notes.trim(),
+      };
+      onUpdateTask(updated);
+      showToast('success', 'Tarefa Atualizada', `"${name.trim()}" foi atualizada com sucesso.`);
+    } else {
+      const newTask: Task = {
+        id: `task-${Date.now()}`,
+        name: name.trim(),
+        courseId: courseId || visibleCourses[0]?.id || courses[0]?.id || '',
+        status,
+        type,
+        dueDate: dueDate || new Date().toISOString().split('T')[0],
+        notes: notes.trim(),
+      };
+      onAddTask(newTask);
+      showToast('success', 'Tarefa Criada', `"${name.trim()}" foi adicionada.`);
+    }
 
-    onAddTask(newTask);
     setIsModalOpen(false);
+    setEditingTask(null);
     setName('');
     setNotes('');
   };
@@ -186,7 +225,7 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
         </div>
 
         <button
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => handleOpenCreate()}
           className="flex items-center gap-2 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg shadow-sm transition-all"
         >
           <Plus className="w-4 h-4" />
@@ -197,7 +236,7 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
       {/* Helpful Hint */}
       <div className="flex items-center gap-2 text-[11px] text-[#787774] dark:text-[#9b9a97] bg-white/60 dark:bg-[#202020]/60 px-3 py-1.5 rounded-lg border border-[#e9e9e8] dark:border-[#2f2f2f] w-fit">
         <GripVertical className="w-3.5 h-3.5 text-blue-500" />
-        <span>Arraste e solte os cartões entre as colunas para mudar o status da tarefa.</span>
+        <span>Arraste os cartões entre as colunas ou clique em um cartão para editar prazos e detalhes.</span>
       </div>
 
       {/* Kanban Board Grid */}
@@ -236,6 +275,14 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
                     {colTasks.length}
                   </span>
                 </div>
+
+                <button
+                  onClick={() => handleOpenCreate(col.id)}
+                  className="p-1 rounded text-[#787774] hover:text-[#37352f] dark:hover:text-white hover:bg-stone-200/60 dark:hover:bg-stone-800 transition-colors"
+                  title={`Adicionar tarefa em ${col.label}`}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
               </div>
 
               {/* Cards List */}
@@ -252,7 +299,9 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
                       draggable
                       onDragStart={(e) => handleDragStart(e, task.id)}
                       onDragEnd={handleDragEnd}
-                      className={`group bg-white dark:bg-[#252525] p-3.5 rounded-xl border border-[#e9e9e8] dark:border-[#333333] hover:border-blue-300 dark:hover:border-blue-500/50 hover:shadow-md transition-all space-y-2 relative select-none cursor-grab active:cursor-grabbing ${
+                      onClick={() => handleOpenEdit(task)}
+                      title="Clique para editar prazo ou descrição"
+                      className={`group bg-white dark:bg-[#252525] p-3.5 rounded-xl border border-[#e9e9e8] dark:border-[#333333] hover:border-blue-300 dark:hover:border-blue-500/50 hover:shadow-md transition-all space-y-2 relative select-none cursor-pointer ${
                         isDragging ? 'opacity-40 scale-[0.98] ring-2 ring-blue-500 shadow-none' : ''
                       }`}
                     >
@@ -273,12 +322,12 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
                         </div>
 
                         <div className="flex items-center gap-1 text-stone-400 group-hover:text-stone-600 dark:text-stone-500 dark:group-hover:text-stone-300 transition-colors">
-                          <GripVertical className="w-3.5 h-3.5" />
+                          <GripVertical className="w-3.5 h-3.5 cursor-grab active:cursor-grabbing" />
                         </div>
                       </div>
 
                       {/* Card Title */}
-                      <h4 className="text-xs md:text-sm font-medium text-[#37352f] dark:text-[#f3f3f2] leading-snug">
+                      <h4 className="text-xs md:text-sm font-medium text-[#37352f] dark:text-[#f3f3f2] leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                         {task.name}
                       </h4>
 
@@ -297,10 +346,11 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
                           {isLate && <AlertCircle className="w-3 h-3" />}
                         </div>
 
-                        {/* Status switcher fallback buttons + Delete */}
+                        {/* Status switcher fallback buttons + Edit + Delete */}
                         <div className="flex items-center gap-1">
                           {col.id !== 'todo' && (
                             <button
+                              type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onUpdateTask({
@@ -316,6 +366,7 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
                           )}
                           {col.id !== 'done' && (
                             <button
+                              type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onUpdateTask({
@@ -330,6 +381,18 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
                             </button>
                           )}
                           <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenEdit(task);
+                            }}
+                            className="p-1 text-stone-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-stone-100 dark:hover:bg-stone-800 rounded transition-colors"
+                            title="Editar tarefa (prazo, descrição...)"
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               showConfirm({
@@ -373,18 +436,36 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
         })}
       </div>
 
-      {/* Modal Add Task */}
+      {/* Modal Add / Edit Task */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white dark:bg-[#202020] rounded-xl border border-[#e9e9e8] dark:border-[#2f2f2f] w-full max-w-md shadow-2xl p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-lg">Nova Tarefa / Entrega</h3>
-              <button onClick={() => setIsModalOpen(false)} className="p-1 hover:bg-stone-100 dark:hover:bg-stone-800 rounded">
+              <h3 className="font-semibold text-lg flex items-center gap-2">
+                {editingTask ? (
+                  <>
+                    <Pencil className="w-4 h-4 text-blue-600" />
+                    <span>Editar Tarefa</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-4 h-4 text-blue-600" />
+                    <span>Nova Tarefa / Entrega</span>
+                  </>
+                )}
+              </h3>
+              <button
+                onClick={() => {
+                  setIsModalOpen(false);
+                  setEditingTask(null);
+                }}
+                className="p-1 hover:bg-stone-100 dark:hover:bg-stone-800 rounded"
+              >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleCreate} className="space-y-4 text-xs md:text-sm">
+            <form onSubmit={handleSubmit} className="space-y-4 text-xs md:text-sm">
               <div>
                 <label className="block text-[#787774] dark:text-[#9b9a97] mb-1 font-medium">Nome da Tarefa *</label>
                 <input
@@ -431,7 +512,9 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[#787774] dark:text-[#9b9a97] mb-1 font-medium">Status Inicial</label>
+                  <label className="block text-[#787774] dark:text-[#9b9a97] mb-1 font-medium">
+                    {editingTask ? 'Status' : 'Status Inicial'}
+                  </label>
                   <select
                     value={status}
                     onChange={(e) => setStatus(e.target.value as TaskStatus)}
@@ -468,7 +551,10 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={() => {
+                    setIsModalOpen(false);
+                    setEditingTask(null);
+                  }}
                   className="px-4 py-2 rounded-lg text-xs font-medium hover:bg-stone-100 dark:hover:bg-stone-800"
                 >
                   Cancelar
@@ -477,7 +563,7 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
                   type="submit"
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium shadow"
                 >
-                  Salvar Tarefa
+                  {editingTask ? 'Salvar Alterações' : 'Salvar Tarefa'}
                 </button>
               </div>
             </form>
