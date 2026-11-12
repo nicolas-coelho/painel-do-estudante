@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Task, Course, TaskStatus, TaskType } from '../types';
 import { useNotification } from '../context/NotificationContext';
-import { formatDateBR } from '../dateUtils';
+import { formatDateBR, parseDateToISO } from '../dateUtils';
 import { Plus, Calendar, AlertCircle, Trash2, X, GripVertical } from 'lucide-react';
 
 interface TasksKanbanTabProps {
@@ -55,6 +55,14 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
   const filteredTasks = tasks.filter(
     (t) => selectedCourse === 'all' || t.courseId === selectedCourse
   );
+
+  // Converte data para timestamp numérico para ordenação (datas mais próximas no topo)
+  const getTaskTimestamp = (dueDate?: string | null): number => {
+    if (!dueDate || !dueDate.trim()) return Infinity;
+    const iso = parseDateToISO(dueDate);
+    const time = new Date(iso || dueDate).getTime();
+    return isNaN(time) ? Infinity : time;
+  };
 
   const columns: { id: TaskStatus; label: string; badgeColor: string }[] = [
     { id: 'todo', label: 'A Fazer', badgeColor: 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400' },
@@ -195,7 +203,15 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
       {/* Kanban Board Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {columns.map((col) => {
-          const colTasks = filteredTasks.filter((t) => t.status === col.id);
+          // Ordena as atividades pela data de entrega mais próxima no topo; tarefas sem data ficam no final
+          const colTasks = filteredTasks
+            .filter((t) => t.status === col.id)
+            .sort((a, b) => {
+              const timeA = getTaskTimestamp(a.dueDate);
+              const timeB = getTaskTimestamp(b.dueDate);
+              if (timeA !== timeB) return timeA - timeB;
+              return a.name.localeCompare(b.name, 'pt-BR');
+            });
           const isOver = dragOverColId === col.id;
 
           return (
@@ -226,7 +242,8 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
               <div className="space-y-3 flex-1 overflow-y-auto">
                 {colTasks.map((task) => {
                   const course = courses.find((c) => c.id === task.courseId);
-                  const isLate = task.status !== 'done' && new Date(task.dueDate) < new Date(new Date().setHours(0,0,0,0));
+                  const taskIso = parseDateToISO(task.dueDate);
+                  const isLate = task.status !== 'done' && Boolean(taskIso) && new Date(taskIso) < new Date(new Date().setHours(0,0,0,0));
                   const isDragging = draggedTaskId === task.id;
 
                   return (
