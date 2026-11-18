@@ -602,8 +602,7 @@ export const App: React.FC = () => {
 
   const isShowingMockTemplate =
     firebaseUser?.email?.toLowerCase() === 'nicolasplcoelho@gmail.com' &&
-    courses.length > 0 &&
-    courses[0]?.id === 'course-1';
+    !courses.some((c) => c.id === 'course-es680' || c.code === 'ES680' || c.code === 'EA513');
 
   const handleRestoreFromPrincipal = async () => {
     if (!firebaseUser) return;
@@ -616,44 +615,57 @@ export const App: React.FC = () => {
       }
 
       const uid = firebaseUser.uid;
+      const cleanPayload: Record<string, any> = {
+        userEmail: firebaseUser.email || '',
+        displayName: firebaseUser.displayName || '',
+      };
+
       if (Array.isArray(legacyData.courses)) {
+        cleanPayload.courses = legacyData.courses;
         setCourses(legacyData.courses);
         saveUserState('courses', legacyData.courses, uid);
       }
       if (Array.isArray(legacyData.tasks)) {
+        cleanPayload.tasks = legacyData.tasks;
         setTasks(legacyData.tasks);
         saveUserState('tasks', legacyData.tasks, uid);
       }
       if (Array.isArray(legacyData.topics)) {
+        cleanPayload.topics = legacyData.topics;
         setTopics(legacyData.topics);
         saveUserState('topics', legacyData.topics, uid);
       }
       if (Array.isArray(legacyData.sessions)) {
+        cleanPayload.sessions = legacyData.sessions;
         setSessions(legacyData.sessions);
         saveUserState('sessions', legacyData.sessions, uid);
       }
       if (Array.isArray(legacyData.notes)) {
+        cleanPayload.notes = legacyData.notes;
         setNotes(legacyData.notes);
         saveUserState('notes', legacyData.notes, uid);
       }
       if (Array.isArray(legacyData.personalBills)) {
+        cleanPayload.personalBills = legacyData.personalBills;
         setPersonalBills(legacyData.personalBills);
         saveUserState('personalBills', legacyData.personalBills, uid);
       }
       if (Array.isArray(legacyData.personalAppointments)) {
+        cleanPayload.personalAppointments = legacyData.personalAppointments;
         setPersonalAppointments(legacyData.personalAppointments);
         saveUserState('personalAppointments', legacyData.personalAppointments, uid);
       }
-      if (typeof legacyData.calendarId === 'string') {
+      if (typeof legacyData.calendarId === 'string' && legacyData.calendarId.length > 0) {
+        cleanPayload.calendarId = legacyData.calendarId;
         setCalendarId(legacyData.calendarId);
         saveUserState('calendarId', legacyData.calendarId, uid);
       }
 
-      await saveToFirestore(uid, {
-        ...legacyData,
-        userEmail: firebaseUser.email || '',
-        displayName: firebaseUser.displayName || '',
-      });
+      const saveRes = await saveToFirestore(uid, cleanPayload);
+      if (!saveRes.success) {
+        showToast('error', 'Erro ao salvar na nuvem', saveRes.error || 'Falha ao gravar no Firestore.');
+        return;
+      }
 
       setRestoreBannerDismissed(true);
       showToast('success', 'Dados Restaurados!', 'Suas disciplinas, tarefas e contas originais foram recuperadas com sucesso.');
