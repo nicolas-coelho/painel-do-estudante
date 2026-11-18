@@ -120,10 +120,17 @@ export const App: React.FC = () => {
   );
   const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
 
+  // Trava de segurança: impede gravar na nuvem antes de concluir a leitura inicial do Firestore
+  const cloudHydratedRef = React.useRef<boolean>(false);
+
   // Helper para salvar na nuvem de forma estritamente isolada por usuário
   const syncEntityToCloud = (key: string, data: any) => {
-    const targetDoc = firebaseUser ? firebaseUser.uid : 'principal';
-    saveToFirestore(targetDoc, { [key]: data });
+    if (!firebaseUser) return;
+    if (!cloudHydratedRef.current) {
+      console.warn(`Sincronização de "${key}" adiada: aguardando hidratação inicial da nuvem.`);
+      return;
+    }
+    saveToFirestore(firebaseUser.uid, { [key]: data });
   };
 
   // Handlers para Tópicos de Estudo (Active Recall & Revisões)
@@ -297,7 +304,11 @@ export const App: React.FC = () => {
 
   // Real-time Firestore sync listener: sincroniza exclusivamente com o UID autenticado (isolamento por usuário)
   useEffect(() => {
-    if (!firebaseUser) return;
+    if (!firebaseUser) {
+      cloudHydratedRef.current = false;
+      return;
+    }
+    cloudHydratedRef.current = false;
     const docId = firebaseUser.uid;
 
     // Carrega o cache local específico deste usuário imediatamente ao alternar/conectar
@@ -325,20 +336,62 @@ export const App: React.FC = () => {
       if (!data && metadata?.fromCache) return;
 
       if (!data) {
-        // Se for o administrador principal e ainda não tiver doc no UID, tenta migrar de 'principal' antes de usar o template
+        // Trava 1: Dupla checagem direta no Firestore antes de criar documento inicial
+        const serverCheck = await loadFromFirestore(docId);
+        if (serverCheck) {
+          cloudHydratedRef.current = true;
+          return;
+        }
+
+        // Trava 2: Se já existirem dados locais salvos para este usuário, preserva e envia para a nuvem
+        const hasLocalData =
+          userCourses.length > 0 ||
+          userTasks.length > 0 ||
+          userBills.length > 0 ||
+          userApps.length > 0 ||
+          userNotes.length > 0;
+
+        if (hasLocalData) {
+          await saveToFirestore(docId, {
+            userEmail: firebaseUser.email || '',
+            displayName: firebaseUser.displayName || '',
+            courses: userCourses,
+            tasks: userTasks,
+            topics: userTopics,
+            sessions: userSessions,
+            notes: userNotes,
+            personalBills: userBills,
+            personalAppointments: userApps,
+            calendarId: userCal || firebaseUser.email || '',
+            createdAt: new Date().toISOString(),
+          });
+          cloudHydratedRef.current = true;
+          return;
+        }
+
+        // Trava 3: Se for o administrador principal e ainda não tiver doc no UID, tenta migrar de 'principal'
         if (firebaseUser.email?.toLowerCase() === 'nicolasplcoelho@gmail.com') {
           const legacyData = await loadFromFirestore('principal');
           if (legacyData && Array.isArray(legacyData.courses)) {
             await saveToFirestore(docId, {
-              ...legacyData,
+              courses: legacyData.courses,
+              tasks: legacyData.tasks || [],
+              topics: legacyData.topics || [],
+              sessions: legacyData.sessions || [],
+              notes: legacyData.notes || [],
+              personalBills: legacyData.personalBills || [],
+              personalAppointments: legacyData.personalAppointments || [],
+              calendarId: legacyData.calendarId || firebaseUser.email || '',
               userEmail: firebaseUser.email || '',
               displayName: firebaseUser.displayName || '',
+              createdAt: new Date().toISOString(),
             });
+            cloudHydratedRef.current = true;
             return;
           }
         }
 
-        // Novo estudante detectado! Inicializa o dashboard deste estudante com o perfil e template isolado
+        // Novo estudante detectado (sem nuvem e sem cache local)! Inicializa com template isolado
         const initialDashboard = {
           userEmail: firebaseUser.email || '',
           displayName: firebaseUser.displayName || '',
@@ -352,7 +405,7 @@ export const App: React.FC = () => {
           calendarId: firebaseUser.email || '',
           createdAt: new Date().toISOString(),
         };
-        saveToFirestore(docId, initialDashboard);
+        await saveToFirestore(docId, initialDashboard);
         setCourses(initialCourses);
         setTasks(initialTasks);
         setTopics(initialTopics);
@@ -361,8 +414,22 @@ export const App: React.FC = () => {
         setPersonalBills(initialPersonalBills);
         setPersonalAppointments(initialPersonalAppointments);
         setCalendarId(firebaseUser.email || '');
+        cloudHydratedRef.current = true;
         return;
       }
+
+      // Snapshot automático diário local (proteção extra contra perdas)
+      try {
+        const dayKey = new Date().toISOString().split('T')[0];
+        localStorage.setItem(
+          `study_backup_${docId}_${dayKey}`,
+          JSON.stringify({ savedAt: new Date().toISOString(), data })
+        );
+      } catch {
+        // ignora se cota de localStorage estiver cheia
+      }
+
+      cloudHydratedRef.current = true;
 
       if (Array.isArray(data.courses)) {
         setCourses(data.courses);

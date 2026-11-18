@@ -10,6 +10,8 @@ import {
 import {
   getAuth,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   signOut,
   onAuthStateChanged,
@@ -94,7 +96,7 @@ export function getFirebaseAuth(): Auth | null {
   return auth;
 }
 
-// Autenticação com Google
+// Autenticação com Google (com fallback automático para Redirect se o popup for bloqueado)
 export async function loginWithGoogle(): Promise<User | null> {
   const firebaseAuth = getFirebaseAuth();
   if (!firebaseAuth) {
@@ -102,8 +104,20 @@ export async function loginWithGoogle(): Promise<User | null> {
   }
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
-  const result = await signInWithPopup(firebaseAuth, provider);
-  return result.user;
+  try {
+    const result = await signInWithPopup(firebaseAuth, provider);
+    return result.user;
+  } catch (err: any) {
+    const code = err?.code || '';
+    if (
+      code === 'auth/popup-blocked' ||
+      code === 'auth/operation-not-supported-in-this-environment'
+    ) {
+      await signInWithRedirect(firebaseAuth, provider);
+      return null;
+    }
+    throw err;
+  }
 }
 
 // Autenticação com E-mail e Senha
@@ -209,6 +223,7 @@ export function onUserChanged(callback: (user: User | null) => void) {
     callback(null);
     return () => {};
   }
+  getRedirectResult(firebaseAuth).catch(() => {});
   return onAuthStateChanged(firebaseAuth, callback);
 }
 
