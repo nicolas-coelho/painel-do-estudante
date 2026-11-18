@@ -28,7 +28,7 @@ import { HomeTab } from './components/HomeTab';
 import { PersonalLifeTab } from './components/PersonalLifeTab';
 import { FirebaseModal } from './components/FirebaseModal';
 import { LoginScreen } from './components/LoginScreen';
-import { onUserChanged, saveToFirestore, subscribeToFirestore, logoutFirebase, isEmailAllowed } from './firebase';
+import { onUserChanged, loadFromFirestore, saveToFirestore, subscribeToFirestore, logoutFirebase, isEmailAllowed } from './firebase';
 import { fetchGoogleCalendarEvents, GoogleCalendarEvent } from './googleCalendar';
 import { User } from 'firebase/auth';
 import {
@@ -318,11 +318,26 @@ export const App: React.FC = () => {
     const userCal = loadUserState<string>('calendarId', firebaseUser.email || '', docId);
     if (userCal) setCalendarId(userCal);
 
-    const unsub = subscribeToFirestore(docId, (data, metadata) => {
+    const unsub = subscribeToFirestore(docId, async (data, metadata) => {
       // Ignora evento disparado pelas nossas próprias alterações em andamento locais
       if (metadata?.hasPendingWrites) return;
+      // NUNCA sobrescreve a nuvem com template se a resposta veio apenas do cache local vazio
+      if (!data && metadata?.fromCache) return;
 
       if (!data) {
+        // Se for o administrador principal e ainda não tiver doc no UID, tenta migrar de 'principal' antes de usar o template
+        if (firebaseUser.email?.toLowerCase() === 'nicolasplcoelho@gmail.com') {
+          const legacyData = await loadFromFirestore('principal');
+          if (legacyData && Array.isArray(legacyData.courses)) {
+            await saveToFirestore(docId, {
+              ...legacyData,
+              userEmail: firebaseUser.email || '',
+              displayName: firebaseUser.displayName || '',
+            });
+            return;
+          }
+        }
+
         // Novo estudante detectado! Inicializa o dashboard deste estudante com o perfil e template isolado
         const initialDashboard = {
           userEmail: firebaseUser.email || '',
@@ -582,6 +597,73 @@ export const App: React.FC = () => {
     reader.readAsText(file);
   };
 
+  const [restoreBannerDismissed, setRestoreBannerDismissed] = useState(false);
+  const [isRestoringPrincipal, setIsRestoringPrincipal] = useState(false);
+
+  const isShowingMockTemplate =
+    firebaseUser?.email?.toLowerCase() === 'nicolasplcoelho@gmail.com' &&
+    courses.length > 0 &&
+    courses[0]?.id === 'course-1';
+
+  const handleRestoreFromPrincipal = async () => {
+    if (!firebaseUser) return;
+    setIsRestoringPrincipal(true);
+    try {
+      const legacyData = await loadFromFirestore('principal');
+      if (!legacyData || !Array.isArray(legacyData.courses)) {
+        showToast('error', 'Backup não encontrado', 'Não foram encontrados dados no documento principal.');
+        return;
+      }
+
+      const uid = firebaseUser.uid;
+      if (Array.isArray(legacyData.courses)) {
+        setCourses(legacyData.courses);
+        saveUserState('courses', legacyData.courses, uid);
+      }
+      if (Array.isArray(legacyData.tasks)) {
+        setTasks(legacyData.tasks);
+        saveUserState('tasks', legacyData.tasks, uid);
+      }
+      if (Array.isArray(legacyData.topics)) {
+        setTopics(legacyData.topics);
+        saveUserState('topics', legacyData.topics, uid);
+      }
+      if (Array.isArray(legacyData.sessions)) {
+        setSessions(legacyData.sessions);
+        saveUserState('sessions', legacyData.sessions, uid);
+      }
+      if (Array.isArray(legacyData.notes)) {
+        setNotes(legacyData.notes);
+        saveUserState('notes', legacyData.notes, uid);
+      }
+      if (Array.isArray(legacyData.personalBills)) {
+        setPersonalBills(legacyData.personalBills);
+        saveUserState('personalBills', legacyData.personalBills, uid);
+      }
+      if (Array.isArray(legacyData.personalAppointments)) {
+        setPersonalAppointments(legacyData.personalAppointments);
+        saveUserState('personalAppointments', legacyData.personalAppointments, uid);
+      }
+      if (typeof legacyData.calendarId === 'string') {
+        setCalendarId(legacyData.calendarId);
+        saveUserState('calendarId', legacyData.calendarId, uid);
+      }
+
+      await saveToFirestore(uid, {
+        ...legacyData,
+        userEmail: firebaseUser.email || '',
+        displayName: firebaseUser.displayName || '',
+      });
+
+      setRestoreBannerDismissed(true);
+      showToast('success', 'Dados Restaurados!', 'Suas disciplinas, tarefas e contas originais foram recuperadas com sucesso.');
+    } catch {
+      showToast('error', 'Erro na Restauração', 'Não foi possível restaurar os dados do documento principal.');
+    } finally {
+      setIsRestoringPrincipal(false);
+    }
+  };
+
   // Nav Tabs configuration
   const tabs = [
     {
@@ -679,6 +761,29 @@ export const App: React.FC = () => {
 
       {/* Main Content Area */}
       <main className="max-w-7xl 2xl:max-w-[1560px] mx-auto px-4 md:px-8 xl:px-10 mt-6">
+        {isShowingMockTemplate && !restoreBannerDismissed && (
+          <div className="mb-5 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+            <div className="text-xs md:text-sm text-amber-900 dark:text-amber-200">
+              <strong className="font-semibold">Seus dados originais estão salvos na nuvem!</strong>{' '}
+              A atualização multi-usuário criou uma conta nova vazia para o seu UID com dados de exemplo. Clique ao lado para restaurar suas disciplinas, tarefas e contas.
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={handleRestoreFromPrincipal}
+                disabled={isRestoringPrincipal}
+                className="px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-semibold transition-colors shadow-xs"
+              >
+                {isRestoringPrincipal ? 'Restaurando...' : 'Restaurar Meus Dados'}
+              </button>
+              <button
+                onClick={() => setRestoreBannerDismissed(true)}
+                className="px-2 py-1.5 text-xs text-amber-700 dark:text-amber-300 hover:underline"
+              >
+                Dispensar
+              </button>
+            </div>
+          </div>
+        )}
         {/* Navigation Tabs Bar */}
         <div className="flex items-center gap-1.5 md:gap-2 border-b border-[#e9e9e8] dark:border-[#2f2f2f] mb-6 overflow-x-auto pb-1 text-xs md:text-sm">
           {tabs.map((tab) => {

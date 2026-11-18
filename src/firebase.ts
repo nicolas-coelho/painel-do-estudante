@@ -2,6 +2,7 @@ import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import {
   getFirestore,
   doc,
+  getDoc,
   setDoc,
   onSnapshot,
   Firestore,
@@ -212,6 +213,24 @@ export function onUserChanged(callback: (user: User | null) => void) {
 }
 
 export const DEFAULT_DASHBOARD_ID = 'principal';
+
+// Carregar dados pontualmente do Cloud Firestore
+export async function loadFromFirestore(
+  userId: string = DEFAULT_DASHBOARD_ID
+): Promise<any | null> {
+  try {
+    const firestore = getFirebaseDb();
+    if (!firestore) return null;
+
+    const docId = userId || DEFAULT_DASHBOARD_ID;
+    const userDocRef = doc(firestore, 'student_dashboards', docId);
+    const snap = await getDoc(userDocRef);
+    return snap.exists() ? snap.data() : null;
+  } catch (err) {
+    console.error(`Erro ao ler Firestore (doc: ${userId}):`, err);
+    return null;
+  }
+}
 
 // Salvar dados no Cloud Firestore (modo direto ou por usuário)
 export async function saveToFirestore(
