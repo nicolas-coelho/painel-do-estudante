@@ -220,13 +220,24 @@ export async function logoutFirebase(): Promise<void> {
   }
 }
 
+export async function getGoogleRedirectError(): Promise<string | null> {
+  const firebaseAuth = getFirebaseAuth();
+  if (!firebaseAuth) return null;
+  try {
+    await getRedirectResult(firebaseAuth);
+    return null;
+  } catch (err: any) {
+    console.error('Erro no retorno do redirect Google:', err);
+    return getFriendlyAuthErrorMessage(err?.code || err?.message || 'redirect-error');
+  }
+}
+
 export function onUserChanged(callback: (user: User | null) => void) {
   const firebaseAuth = getFirebaseAuth();
   if (!firebaseAuth) {
     callback(null);
     return () => {};
   }
-  getRedirectResult(firebaseAuth).catch(() => {});
   return onAuthStateChanged(firebaseAuth, callback);
 }
 

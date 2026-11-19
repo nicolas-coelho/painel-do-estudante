@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   loginWithGoogle,
   loginWithEmail,
@@ -6,6 +6,7 @@ import {
   resetPassword,
   logoutFirebase,
   getFriendlyAuthErrorMessage,
+  getGoogleRedirectError,
   isEmailAllowed,
 } from '../firebase';
 import { User } from 'firebase/auth';
@@ -48,6 +49,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    getGoogleRedirectError().then((msg) => {
+      if (msg) setErrorMsg(msg);
+    });
+  }, []);
 
   // Se o usuário já está logado, mas NÃO está autorizado na whitelist
   const isUnauthorized = currentUser && !isEmailAllowed(currentUser.email);
