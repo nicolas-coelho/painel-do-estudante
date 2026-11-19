@@ -207,7 +207,10 @@ export function getFriendlyAuthErrorMessage(errorCodeOrMessage: string): string 
   if (code.includes('auth/operation-not-allowed')) {
     return 'Este método de login (E-mail/Senha ou Google) ainda não foi ativado no Firebase Console -> Authentication -> Sign-in method.';
   }
-  return 'Ocorreu um erro ao processar. Tente novamente.';
+  if (code.includes('auth/unauthorized-domain')) {
+    return 'Este domínio não está autorizado no Firebase Console -> Authentication -> Settings -> Domínios autorizados.';
+  }
+  return `Ocorreu um erro ao processar (${errorCodeOrMessage}). Tente novamente.`;
 }
 
 export async function logoutFirebase(): Promise<void> {
