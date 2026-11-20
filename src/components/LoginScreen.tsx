@@ -6,7 +6,6 @@ import {
   resetPassword,
   logoutFirebase,
   getFriendlyAuthErrorMessage,
-  getGoogleRedirectError,
   isEmailAllowed,
 } from '../firebase';
 import { User } from 'firebase/auth';
@@ -31,6 +30,7 @@ interface LoginScreenProps {
   currentUser: User | null;
   darkMode: boolean;
   setDarkMode: (val: boolean) => void;
+  initialError?: string | null;
 }
 
 type AuthMode = 'login' | 'register' | 'forgot';
@@ -39,6 +39,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   currentUser,
   darkMode,
   setDarkMode,
+  initialError,
 }) => {
   const [mode, setMode] = useState<AuthMode>('login');
   const [name, setName] = useState('');
@@ -47,14 +48,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(initialError || null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    getGoogleRedirectError().then((msg) => {
-      if (msg) setErrorMsg(msg);
-    });
-  }, []);
+    if (initialError) {
+      setErrorMsg(initialError);
+    }
+  }, [initialError]);
 
   // Se o usuário já está logado, mas NÃO está autorizado na whitelist
   const isUnauthorized = currentUser && !isEmailAllowed(currentUser.email);

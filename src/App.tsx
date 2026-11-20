@@ -28,7 +28,7 @@ import { HomeTab } from './components/HomeTab';
 import { PersonalLifeTab } from './components/PersonalLifeTab';
 import { FirebaseModal } from './components/FirebaseModal';
 import { LoginScreen } from './components/LoginScreen';
-import { onUserChanged, loadFromFirestore, saveToFirestore, subscribeToFirestore, logoutFirebase, isEmailAllowed } from './firebase';
+import { onUserChanged, resolveGoogleRedirect, loadFromFirestore, saveToFirestore, subscribeToFirestore, logoutFirebase, isEmailAllowed } from './firebase';
 import { fetchGoogleCalendarEvents, GoogleCalendarEvent } from './googleCalendar';
 import { User } from 'firebase/auth';
 import {
@@ -69,6 +69,7 @@ export const App: React.FC = () => {
   // Firebase auth & modal state
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [authRedirectError, setAuthRedirectError] = useState<string | null>(null);
   const [isFirebaseModalOpen, setIsFirebaseModalOpen] = useState(false);
 
   // Persistence helpers com isolamento por usuário (multi-tenant)
@@ -293,13 +294,44 @@ export const App: React.FC = () => {
     };
   }, [calendarId]);
 
-  // Listen to Firebase Auth state
+  // Listen to Firebase Auth state & resolve pending Google redirect before unlocking UI
   useEffect(() => {
-    const unsub = onUserChanged((user) => {
-      setFirebaseUser(user);
-      setAuthLoading(false);
+    let isMounted = true;
+    let authStateResolved = false;
+    let redirectResolved = false;
+
+    const finishLoadingIfReady = () => {
+      if (isMounted && authStateResolved && redirectResolved) {
+        setAuthLoading(false);
+      }
+    };
+
+    resolveGoogleRedirect().then(({ user, error }) => {
+      if (!isMounted) return;
+      if (user) {
+        setFirebaseUser(user);
+      }
+      if (error) {
+        setAuthRedirectError(error);
+      }
+      redirectResolved = true;
+      finishLoadingIfReady();
     });
-    return () => unsub();
+
+    const unsub = onUserChanged((user) => {
+      if (!isMounted) return;
+      setFirebaseUser(user);
+      if (user) {
+        setAuthRedirectError(null);
+      }
+      authStateResolved = true;
+      finishLoadingIfReady();
+    });
+
+    return () => {
+      isMounted = false;
+      unsub();
+    };
   }, []);
 
   // Real-time Firestore sync listener: sincroniza exclusivamente com o UID autenticado (isolamento por usuário)
@@ -815,6 +847,7 @@ export const App: React.FC = () => {
         currentUser={firebaseUser}
         darkMode={darkMode}
         setDarkMode={setDarkMode}
+        initialError={authRedirectError}
       />
     );
   }

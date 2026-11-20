@@ -19,11 +19,19 @@
   ],
   "rewrites": [
     {
+      "source": "/__/auth/:path*",
+      "destination": "https://painel-estudante-8b2c.firebaseapp.com/__/auth/:path*"
+    },
+    {
+      "source": "/__/firebase/init.json",
+      "destination": "https://painel-estudante-8b2c.firebaseapp.com/__/firebase/init.json"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/$1"
     },
     {
-      "source": "/((?!api/|assets/|.*\\..*).*)",
+      "source": "/((?!api/|assets/|__/|.*\\..*).*)",
       "destination": "/index.html"
     }
   ]

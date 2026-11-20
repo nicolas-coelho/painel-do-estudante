@@ -24,6 +24,24 @@ import {
 } from 'firebase/auth';
 import { FirebaseConfig } from './types';
 
+// Domínios hospedados na Vercel que fazem proxy de /__/auth/* para o Firebase (mesma origem)
+const SAME_ORIGIN_AUTH_HOSTS = new Set([
+  'painel-de-estudo-sage.vercel.app',
+  'painel-do-estudante.vercel.app',
+]);
+
+function resolveAuthDomain(configuredDomain: string, projectId: string): string {
+  if (
+    typeof window !== 'undefined' &&
+    window.location.protocol === 'https:' &&
+    projectId === 'painel-estudante-8b2c' &&
+    SAME_ORIGIN_AUTH_HOSTS.has(window.location.hostname)
+  ) {
+    return window.location.host;
+  }
+  return configuredDomain;
+}
+
 // Default project config for Painel do Estudante
 const defaultFirebaseConfig: FirebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyD5uzbhpcINOZpH4w_aRBzitlKW7DErEI0',
@@ -63,10 +81,18 @@ export function initFirebase(customConfig?: FirebaseConfig): {
   error?: string;
 } {
   try {
-    const cfg = customConfig || getStoredFirebaseConfig();
-    if (!cfg || !cfg.apiKey || !cfg.projectId) {
+    const rawCfg = customConfig || getStoredFirebaseConfig();
+    if (!rawCfg || !rawCfg.apiKey || !rawCfg.projectId) {
       return { success: false, error: 'Credenciais do Firebase incompletas' };
     }
+
+    const cfg: FirebaseConfig = {
+      ...rawCfg,
+      authDomain: resolveAuthDomain(
+        rawCfg.authDomain || defaultFirebaseConfig.authDomain,
+        rawCfg.projectId
+      ),
+    };
 
     if (getApps().length === 0) {
       app = initializeApp(cfg);
@@ -220,16 +246,27 @@ export async function logoutFirebase(): Promise<void> {
   }
 }
 
-export async function getGoogleRedirectError(): Promise<string | null> {
+export async function resolveGoogleRedirect(): Promise<{
+  user: User | null;
+  error: string | null;
+}> {
   const firebaseAuth = getFirebaseAuth();
-  if (!firebaseAuth) return null;
+  if (!firebaseAuth) return { user: null, error: null };
   try {
-    await getRedirectResult(firebaseAuth);
-    return null;
+    const result = await getRedirectResult(firebaseAuth);
+    return { user: result?.user ?? null, error: null };
   } catch (err: any) {
     console.error('Erro no retorno do redirect Google:', err);
-    return getFriendlyAuthErrorMessage(err?.code || err?.message || 'redirect-error');
+    return {
+      user: null,
+      error: getFriendlyAuthErrorMessage(err?.code || err?.message || 'redirect-error'),
+    };
   }
+}
+
+export async function getGoogleRedirectError(): Promise<string | null> {
+  const { error } = await resolveGoogleRedirect();
+  return error;
 }
 
 export function onUserChanged(callback: (user: User | null) => void) {
