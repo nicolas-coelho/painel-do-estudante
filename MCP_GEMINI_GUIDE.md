@@ -51,18 +51,21 @@ Este projeto possui um **Servidor MCP (Model Context Protocol)** oficial de alta
 
 A Vercel hospeda o front-end Vite e automaticamente publica a pasta [`api/`](file:///C:/Users/nicol/Documents/painel-do-estudante/api/mcp.ts) como Serverless Functions.
 
-- **Endpoint HTTP / SSE do MCP:** `https://seu-painel.vercel.app/api/mcp`
-- Configurado via [`vercel.json`](file:///C:/Users/nicol/Documents/painel-do-estudante/vercel.json) com suporte a CORS total e rewrites.
+- **Endpoint Streamable HTTP do MCP:** `https://painel-de-estudo-sage.vercel.app/api/mcp`
+- Configurado via [`vercel.json`](file:///C:/Users/nicol/Documents/painel-do-estudante/vercel.json) com suporte a CORS completo (`Mcp-Session-Id`, `MCP-Protocol-Version`, `Authorization`) e rewrites.
 
-### Variáveis de Ambiente Recomendadas na Vercel:
+### Variáveis de Ambiente na Vercel:
 
 No painel da Vercel (**Settings** -> **Environment Variables**):
 
-1. `FIREBASE_PROJECT_ID`: `painel-estudante-8b2c` *(já configurado)*
-2. *(Recomendado para acesso administrativo total ao Firestore)*:
-   - `FIREBASE_SERVICE_ACCOUNT`: Conteúdo JSON da chave privada de conta de serviço gerada no Firebase Console (**Project Settings** -> **Service Accounts** -> **Generate new private key**).
-3. *(Opcional para segurança)*:
-   - `MCP_API_KEY`: Chave secreta personalizada caso queira proteger seu endpoint contra acessos externos.
+1. `FIREBASE_SERVICE_ACCOUNT` *(**Obrigatória** para leitura do UID real e gravações no Firestore)*:
+   - Conteúdo JSON (ou Base64) da chave privada de conta de serviço gerada no Firebase Console (**Project Settings** -> **Service Accounts** -> **Generate new private key**).
+   - Alternativa: `FIREBASE_CLIENT_EMAIL` + `FIREBASE_PRIVATE_KEY`.
+2. `FIREBASE_PROJECT_ID`: `painel-estudante-8b2c` *(padrão automático)*
+3. `DEFAULT_USER_EMAIL` *(opcional, padrão `nicolasplcoelho@gmail.com`)* ou `DEFAULT_DASHBOARD_ID` *(opcional, UID explícito)*:
+   - Quando `FIREBASE_SERVICE_ACCOUNT` está configurada, o MCP resolve automaticamente o UID real do usuário no Firebase Auth para sincronizar exatamente com o painel logado.
+4. `MCP_API_KEY` *(recomendada para segurança)*:
+   - Chave secreta para proteger o endpoint contra acessos externos. Clientes devem enviar `Authorization: Bearer <MCP_API_KEY>` ou header `x-api-key`.
 
 ---
 
@@ -76,8 +79,11 @@ No arquivo de configuração do seu cliente Gemini (ou Claude Desktop / Cursor /
 {
   "mcpServers": {
     "painel-do-estudante": {
-      "url": "https://seu-painel.vercel.app/api/mcp",
-      "transport": "http"
+      "url": "https://painel-de-estudo-sage.vercel.app/api/mcp",
+      "transport": "http",
+      "headers": {
+        "Authorization": "Bearer SUA_MCP_API_KEY"
+      }
     }
   }
 }
@@ -86,7 +92,7 @@ No arquivo de configuração do seu cliente Gemini (ou Claude Desktop / Cursor /
 ### Opção 2: Gemini CLI / Extensions
 Você pode apontar a extensão HTTP para:
 ```bash
-https://seu-painel.vercel.app/api/mcp
+https://painel-de-estudo-sage.vercel.app/api/mcp
 ```
 
 ---

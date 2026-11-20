@@ -1,14 +1,206 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { initializeApp, cert, getApps, getApp, type ServiceAccount } from 'firebase-admin/app';
+import { getFirestore, type Firestore } from 'firebase-admin/firestore';
+import { getAuth, type Auth } from 'firebase-admin/auth';
 
 // ============================================================================
-// CONFIGURAÇÃO DO FIRESTORE (COMUNICAÇÃO DIRETA VIA REST API)
+// CONFIGURAÇÃO DO FIRESTORE & FIREBASE ADMIN SDK
 // ============================================================================
 const DEFAULT_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'painel-estudante-8b2c';
-const DEFAULT_DASHBOARD_ID = process.env.DEFAULT_DASHBOARD_ID || 'principal';
+const DEFAULT_DASHBOARD_ID = 'principal';
+const CONFIGURED_DASHBOARD_ID = process.env.DEFAULT_DASHBOARD_ID?.trim() || '';
+const DEFAULT_USER_EMAIL =
+  process.env.DEFAULT_USER_EMAIL?.trim() ||
+  process.env.NOTIFICATION_EMAIL?.trim() ||
+  'nicolasplcoelho@gmail.com';
+
+const ALLOWED_DASHBOARD_FIELDS = new Set([
+  'courses',
+  'tasks',
+  'topics',
+  'sessions',
+  'notes',
+  'personalBills',
+  'personalAppointments',
+  'calendarId',
+  'updatedAt',
+  'createdAt',
+  'userId',
+  'email',
+  'userEmail',
+  'displayName',
+]);
+
+let cachedAdmin: { db: Firestore; auth: Auth } | null = null;
+let adminInitAttempted = false;
+let adminInitError: string | null = null;
+const emailToUidCache = new Map<string, string>();
+
+function normalizeServiceAccountObject(raw: any): ServiceAccount | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const projectId = raw.projectId || raw.project_id || DEFAULT_PROJECT_ID;
+  const clientEmail = raw.clientEmail || raw.client_email;
+  const privateKeyRaw = raw.privateKey || raw.private_key;
+  if (!clientEmail || !privateKeyRaw) return null;
+
+  return {
+    projectId: String(projectId),
+    clientEmail: String(clientEmail),
+    privateKey: String(privateKeyRaw).replace(/\\n/g, '\n'),
+  };
+}
+
+function parseServiceAccountFromEnv(): ServiceAccount | null {
+  const rawEnv = process.env.FIREBASE_SERVICE_ACCOUNT?.trim();
+  if (rawEnv) {
+    let cleaned = rawEnv;
+    if (
+      (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+      (cleaned.startsWith("'") && cleaned.endsWith("'"))
+    ) {
+      cleaned = cleaned.slice(1, -1).trim();
+    }
+
+    const candidates = [cleaned];
+    if (!cleaned.startsWith('{')) {
+      try {
+        candidates.push(Buffer.from(cleaned, 'base64').toString('utf8'));
+      } catch {
+        // ignora se não for Base64 válido
+      }
+    }
+
+    for (const candidate of candidates) {
+      try {
+        const parsed = JSON.parse(candidate);
+        const normalized = normalizeServiceAccountObject(parsed);
+        if (normalized) return normalized;
+      } catch {
+        // tenta próximo formato
+      }
+    }
+
+    adminInitError =
+      'FIREBASE_SERVICE_ACCOUNT definida, porém inválida (esperado JSON ou Base64 da conta de serviço).';
+    return null;
+  }
+
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL?.trim();
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.trim();
+  if (clientEmail && privateKey) {
+    return {
+      projectId: DEFAULT_PROJECT_ID,
+      clientEmail,
+      privateKey: privateKey.replace(/\\n/g, '\n'),
+    };
+  }
+
+  return null;
+}
+
+function getAdminServices(): { db: Firestore; auth: Auth } | null {
+  if (adminInitAttempted) return cachedAdmin;
+  adminInitAttempted = true;
+
+  const serviceAccount = parseServiceAccountFromEnv();
+  if (!serviceAccount) {
+    return null;
+  }
+
+  try {
+    const app =
+      getApps().length > 0
+        ? getApp()
+        : initializeApp({
+            credential: cert(serviceAccount),
+            projectId: serviceAccount.projectId || DEFAULT_PROJECT_ID,
+          });
+
+    const db = getFirestore(app);
+    try {
+      db.settings({ ignoreUndefinedProperties: true });
+    } catch {
+      // settings() só pode ser chamado uma vez por instância Firestore
+    }
+    const auth = getAuth(app);
+    cachedAdmin = { db, auth };
+    adminInitError = null;
+    return cachedAdmin;
+  } catch (err: any) {
+    adminInitError = `Falha ao inicializar Firebase Admin: ${err?.message || 'erro desconhecido'}`;
+    cachedAdmin = null;
+    return null;
+  }
+}
+
+function stripUndefined(value: any): any {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== 'object') return value;
+  if (value instanceof Date) return value;
+  if (Array.isArray(value)) {
+    return value.map(stripUndefined).filter((item) => item !== undefined);
+  }
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (v === undefined) continue;
+    const cleaned = stripUndefined(v);
+    if (cleaned !== undefined) {
+      out[k] = cleaned;
+    }
+  }
+  return out;
+}
+
+async function resolveEmailToUid(email: string, auth: Auth): Promise<string | null> {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return null;
+  const cached = emailToUidCache.get(normalized);
+  if (cached) return cached;
+
+  try {
+    const userRecord = await auth.getUserByEmail(normalized);
+    if (userRecord?.uid) {
+      emailToUidCache.set(normalized, userRecord.uid);
+      return userRecord.uid;
+    }
+  } catch (err: any) {
+    console.warn(`Não foi possível resolver UID para ${normalized}:`, err?.message || err);
+  }
+  return null;
+}
+
+async function resolveTargetDocId(requestedUserId?: string): Promise<string> {
+  const admin = getAdminServices();
+  const reqId = typeof requestedUserId === 'string' ? requestedUserId.trim() : '';
+
+  if (reqId && reqId !== DEFAULT_DASHBOARD_ID) {
+    if (reqId.includes('@') && admin?.auth) {
+      const uid = await resolveEmailToUid(reqId, admin.auth);
+      if (uid) return uid;
+    }
+    return reqId;
+  }
+
+  if (reqId === DEFAULT_DASHBOARD_ID) {
+    return DEFAULT_DASHBOARD_ID;
+  }
+
+  if (CONFIGURED_DASHBOARD_ID && CONFIGURED_DASHBOARD_ID !== DEFAULT_DASHBOARD_ID) {
+    return CONFIGURED_DASHBOARD_ID;
+  }
+
+  if (admin?.auth && DEFAULT_USER_EMAIL) {
+    const uid = await resolveEmailToUid(DEFAULT_USER_EMAIL, admin.auth);
+    if (uid) return uid;
+  }
+
+  return DEFAULT_DASHBOARD_ID;
+}
 
 function toFirestoreFields(obj: any): any {
   const fields: any = {};
   for (const [k, v] of Object.entries(obj || {})) {
+    if (v === undefined) continue;
     fields[k] = toFirestoreValue(v);
   }
   return fields;
@@ -22,7 +214,11 @@ function toFirestoreValue(val: any): any {
   }
   if (typeof val === 'string') return { stringValue: val };
   if (Array.isArray(val)) {
-    return { arrayValue: { values: val.map(toFirestoreValue) } };
+    return {
+      arrayValue: {
+        values: val.filter((v) => v !== undefined).map(toFirestoreValue),
+      },
+    };
   }
   if (typeof val === 'object') {
     return { mapValue: { fields: toFirestoreFields(val) } };
@@ -30,52 +226,78 @@ function toFirestoreValue(val: any): any {
   return { stringValue: String(val) };
 }
 
+function parseFirestoreValue(val: any): any {
+  if (!val || typeof val !== 'object') return val;
+  if (val.stringValue !== undefined) return val.stringValue;
+  if (val.integerValue !== undefined) return Number(val.integerValue);
+  if (val.doubleValue !== undefined) return Number(val.doubleValue);
+  if (val.booleanValue !== undefined) return val.booleanValue;
+  if (val.nullValue !== undefined) return null;
+  if (val.timestampValue !== undefined) return val.timestampValue;
+  if (val.arrayValue !== undefined) {
+    return (val.arrayValue.values || []).map(parseFirestoreValue);
+  }
+  if (val.mapValue !== undefined) {
+    return parseFirestoreFields(val.mapValue.fields || {});
+  }
+  return val;
+}
+
 function parseFirestoreFields(fields: any): any {
   const result: any = {};
   for (const key of Object.keys(fields || {})) {
     const val = fields[key];
     if (!val) continue;
-    if (val.stringValue !== undefined) result[key] = val.stringValue;
-    else if (val.integerValue !== undefined) result[key] = Number(val.integerValue);
-    else if (val.doubleValue !== undefined) result[key] = Number(val.doubleValue);
-    else if (val.booleanValue !== undefined) result[key] = val.booleanValue;
-    else if (val.nullValue !== undefined) result[key] = null;
-    else if (val.arrayValue !== undefined) {
-      result[key] = (val.arrayValue.values || []).map((v: any) =>
-        v.mapValue ? parseFirestoreFields(v.mapValue.fields || {}) : (v.stringValue !== undefined ? v.stringValue : v)
-      );
-    } else if (val.mapValue !== undefined) {
-      result[key] = parseFirestoreFields(val.mapValue.fields || {});
-    }
+    result[key] = parseFirestoreValue(val);
   }
   return result;
 }
 
-// Helper para ler documento do estudante no Firestore via REST API
-async function getStudentDashboard(userId: string = DEFAULT_DASHBOARD_ID) {
-  const targetDoc = userId || DEFAULT_DASHBOARD_ID;
+// Helper para ler documento do estudante no Firestore (Admin SDK ou fallback REST)
+async function getStudentDashboard(requestedUserId?: string) {
+  const targetDoc = await resolveTargetDocId(requestedUserId);
+  const admin = getAdminServices();
 
-  const fetchDoc = async (docName: string) => {
-    try {
-      const url = `https://firestore.googleapis.com/v1/projects/${DEFAULT_PROJECT_ID}/databases/(default)/documents/student_dashboards/${docName}`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const json: any = await res.json();
-        return parseFirestoreFields(json.fields || {});
-      }
-    } catch (err) {
-      console.error(`Erro ao ler ${docName} via REST:`, err);
+  const fetchDoc = async (docName: string): Promise<any | null> => {
+    if (admin) {
+      const snap = await admin.db.collection('student_dashboards').doc(docName).get();
+      return snap.exists ? snap.data() || {} : null;
     }
-    return null;
+
+    const url = `https://firestore.googleapis.com/v1/projects/${DEFAULT_PROJECT_ID}/databases/(default)/documents/student_dashboards/${encodeURIComponent(docName)}`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const json: any = await res.json();
+      return parseFirestoreFields(json.fields || {});
+    }
+    if (res.status === 404) {
+      return null;
+    }
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(
+        `Acesso negado ao ler "${docName}" no Firestore (HTTP ${res.status}). Configure a variável de ambiente FIREBASE_SERVICE_ACCOUNT na Vercel.`
+      );
+    }
+    const errorText = await res.text().catch(() => '');
+    throw new Error(
+      `Falha ao ler Firestore (${docName}, HTTP ${res.status}): ${errorText.slice(0, 200)}`
+    );
   };
 
   let data = await fetchDoc(targetDoc);
 
   // Se o documento específico estiver vazio ou sem matérias, tenta carregar de 'principal'
-  if ((!data || !data.courses || !Array.isArray(data.courses) || data.courses.length === 0) && targetDoc !== DEFAULT_DASHBOARD_ID) {
-    const principalData = await fetchDoc(DEFAULT_DASHBOARD_ID);
-    if (principalData) {
-      data = { ...principalData, ...data };
+  if (
+    (!data || !data.courses || !Array.isArray(data.courses) || data.courses.length === 0) &&
+    targetDoc !== DEFAULT_DASHBOARD_ID
+  ) {
+    try {
+      const principalData = await fetchDoc(DEFAULT_DASHBOARD_ID);
+      if (principalData) {
+        data = { ...principalData, ...data };
+      }
+    } catch {
+      // se o fallback de leitura para 'principal' falhar, segue com os dados disponíveis
     }
   }
 
@@ -87,56 +309,70 @@ async function getStudentDashboard(userId: string = DEFAULT_DASHBOARD_ID) {
   finalData.sessions = Array.isArray(finalData.sessions) ? finalData.sessions : [];
   finalData.notes = Array.isArray(finalData.notes) ? finalData.notes : [];
   finalData.personalBills = Array.isArray(finalData.personalBills) ? finalData.personalBills : [];
-  finalData.personalAppointments = Array.isArray(finalData.personalAppointments) ? finalData.personalAppointments : [];
+  finalData.personalAppointments = Array.isArray(finalData.personalAppointments)
+    ? finalData.personalAppointments
+    : [];
 
   return finalData;
 }
 
-// Helper para salvar documento do estudante no Firestore de forma definitiva via REST API
-async function saveStudentDashboard(userId: string = DEFAULT_DASHBOARD_ID, data: any) {
-  const targetDoc = userId || DEFAULT_DASHBOARD_ID;
-  const payload = {
-    ...data,
-    updatedAt: new Date().toISOString(),
-  };
+// Helper para salvar documento do estudante no Firestore (propaga erros reais)
+async function saveStudentDashboard(requestedUserId: string | undefined, data: any) {
+  const targetDoc = await resolveTargetDocId(requestedUserId);
+  const admin = getAdminServices();
 
-  const saveToDoc = async (docName: string) => {
-    try {
-      const keys = Object.keys(payload);
-      const mask = keys.map((k) => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
-      const url = `https://firestore.googleapis.com/v1/projects/${DEFAULT_PROJECT_ID}/databases/(default)/documents/student_dashboards/${docName}?${mask}`;
-
-      const body = JSON.stringify({
-        fields: toFirestoreFields(payload),
-      });
-
-      const res = await fetch(url, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body,
-      });
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error(`Falha ao salvar no Firestore (${docName}):`, res.status, errorText);
-      }
-    } catch (err: any) {
-      console.error(`Erro ao persistir no Firestore via REST (${docName}):`, err?.message || err);
+  const filtered: Record<string, any> = {};
+  for (const [k, v] of Object.entries(data || {})) {
+    if (ALLOWED_DASHBOARD_FIELDS.has(k) && v !== undefined) {
+      filtered[k] = v;
     }
-  };
+  }
+  const cleanPayload = stripUndefined({
+    ...filtered,
+    updatedAt: new Date().toISOString(),
+  });
 
-  // Salva no documento alvo especificado pelo usuário (isolamento multi-tenant)
-  await saveToDoc(targetDoc);
+  if (admin) {
+    await admin.db.collection('student_dashboards').doc(targetDoc).set(cleanPayload, { merge: true });
+    return;
+  }
+
+  // Fallback REST sem envio de createdAt para não violar regras de imutabilidade em updates
+  const restPayload = { ...cleanPayload };
+  delete restPayload.createdAt;
+  const keys = Object.keys(restPayload);
+  const mask = keys.map((k) => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
+  const url = `https://firestore.googleapis.com/v1/projects/${DEFAULT_PROJECT_ID}/databases/(default)/documents/student_dashboards/${encodeURIComponent(targetDoc)}?${mask}`;
+
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      fields: toFirestoreFields(restPayload),
+    }),
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => '');
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(
+        `Permissão negada ao gravar no Firestore (HTTP ${res.status}). Configure a variável de ambiente FIREBASE_SERVICE_ACCOUNT na Vercel para habilitar gravações autenticadas pelo MCP.`
+      );
+    }
+    throw new Error(`Falha ao salvar no Firestore (HTTP ${res.status}): ${errorText.slice(0, 300)}`);
+  }
 }
 
-const getLocalDateStr = () => {
-  const d = new Date();
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+const getLocalDateStr = (daysOffset = 0): string => {
+  const d = new Date(Date.now() + daysOffset * 86400000);
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
 };
 
 function formatDateBR(dateStr?: string | null): string {
@@ -162,7 +398,7 @@ const MCP_TOOLS = [
       properties: {
         userId: {
           type: 'string',
-          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+          description: 'Identificador do estudante (UID ou e-mail). Se omitido, usa automaticamente o estudante configurado no ambiente (ou "principal").',
         },
       },
     },
@@ -203,7 +439,7 @@ const MCP_TOOLS = [
         },
         userId: {
           type: 'string',
-          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+          description: 'Identificador do estudante (UID ou e-mail). Se omitido, usa automaticamente o estudante configurado no ambiente (ou "principal").',
         },
       },
     },
@@ -227,7 +463,7 @@ const MCP_TOOLS = [
         },
         userId: {
           type: 'string',
-          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+          description: 'Identificador do estudante (UID ou e-mail). Se omitido, usa automaticamente o estudante configurado no ambiente (ou "principal").',
         },
       },
     },
@@ -241,7 +477,7 @@ const MCP_TOOLS = [
       properties: {
         userId: {
           type: 'string',
-          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+          description: 'Identificador do estudante (UID ou e-mail). Se omitido, usa automaticamente o estudante configurado no ambiente (ou "principal").',
         },
       },
     },
@@ -281,7 +517,7 @@ const MCP_TOOLS = [
         },
         userId: {
           type: 'string',
-          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+          description: 'Identificador do estudante (UID ou e-mail). Se omitido, usa automaticamente o estudante configurado no ambiente (ou "principal").',
         },
       },
     },
@@ -300,7 +536,7 @@ const MCP_TOOLS = [
         },
         userId: {
           type: 'string',
-          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+          description: 'Identificador do estudante (UID ou e-mail). Se omitido, usa automaticamente o estudante configurado no ambiente (ou "principal").',
         },
       },
     },
@@ -323,7 +559,7 @@ const MCP_TOOLS = [
         },
         userId: {
           type: 'string',
-          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+          description: 'Identificador do estudante (UID ou e-mail). Se omitido, usa automaticamente o estudante configurado no ambiente (ou "principal").',
         },
       },
     },
@@ -363,7 +599,7 @@ const MCP_TOOLS = [
         },
         userId: {
           type: 'string',
-          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+          description: 'Identificador do estudante (UID ou e-mail). Se omitido, usa automaticamente o estudante configurado no ambiente (ou "principal").',
         },
       },
     },
@@ -381,7 +617,7 @@ const MCP_TOOLS = [
         },
         userId: {
           type: 'string',
-          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+          description: 'Identificador do estudante (UID ou e-mail). Se omitido, usa automaticamente o estudante configurado no ambiente (ou "principal").',
         },
       },
     },
@@ -436,7 +672,7 @@ const MCP_TOOLS = [
         },
         userId: {
           type: 'string',
-          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+          description: 'Identificador do estudante (UID ou e-mail). Se omitido, usa automaticamente o estudante configurado no ambiente (ou "principal").',
         },
       },
     },
@@ -487,7 +723,7 @@ const MCP_TOOLS = [
         },
         userId: {
           type: 'string',
-          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+          description: 'Identificador do estudante (UID ou e-mail). Se omitido, usa automaticamente o estudante configurado no ambiente (ou "principal").',
         },
       },
     },
@@ -506,7 +742,7 @@ const MCP_TOOLS = [
         },
         userId: {
           type: 'string',
-          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+          description: 'Identificador do estudante (UID ou e-mail). Se omitido, usa automaticamente o estudante configurado no ambiente (ou "principal").',
         },
       },
     },
@@ -545,7 +781,7 @@ const MCP_TOOLS = [
         },
         userId: {
           type: 'string',
-          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+          description: 'Identificador do estudante (UID ou e-mail). Se omitido, usa automaticamente o estudante configurado no ambiente (ou "principal").',
         },
       },
     },
@@ -564,7 +800,7 @@ const MCP_TOOLS = [
         },
         userId: {
           type: 'string',
-          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+          description: 'Identificador do estudante (UID ou e-mail). Se omitido, usa automaticamente o estudante configurado no ambiente (ou "principal").',
         },
       },
     },
@@ -599,7 +835,7 @@ const MCP_TOOLS = [
         },
         userId: {
           type: 'string',
-          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+          description: 'Identificador do estudante (UID ou e-mail). Se omitido, usa automaticamente o estudante configurado no ambiente (ou "principal").',
         },
       },
     },
@@ -638,7 +874,7 @@ const MCP_TOOLS = [
         },
         userId: {
           type: 'string',
-          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+          description: 'Identificador do estudante (UID ou e-mail). Se omitido, usa automaticamente o estudante configurado no ambiente (ou "principal").',
         },
       },
     },
@@ -660,7 +896,7 @@ const MCP_TOOLS = [
         },
         userId: {
           type: 'string',
-          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+          description: 'Identificador do estudante (UID ou e-mail). Se omitido, usa automaticamente o estudante configurado no ambiente (ou "principal").',
         },
       },
     },
@@ -688,7 +924,7 @@ const MCP_TOOLS = [
         },
         userId: {
           type: 'string',
-          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+          description: 'Identificador do estudante (UID ou e-mail). Se omitido, usa automaticamente o estudante configurado no ambiente (ou "principal").',
         },
       },
     },
@@ -706,7 +942,7 @@ const MCP_TOOLS = [
         },
         userId: {
           type: 'string',
-          description: 'Identificador do estudante no Firestore (padrão: "principal")',
+          description: 'Identificador do estudante (UID ou e-mail). Se omitido, usa automaticamente o estudante configurado no ambiente (ou "principal").',
         },
       },
     },
@@ -717,7 +953,8 @@ const MCP_TOOLS = [
 // EXECUÇÃO DAS FERRAMENTAS
 // ============================================================================
 async function executeTool(name: string, args: any): Promise<string> {
-  const userId = args?.userId || DEFAULT_DASHBOARD_ID;
+  const userId =
+    typeof args?.userId === 'string' && args.userId.trim() ? args.userId.trim() : undefined;
   const todayStr = getLocalDateStr();
 
   if (name === 'get_study_routine') {
@@ -731,16 +968,16 @@ async function executeTool(name: string, args: any): Promise<string> {
     const inProgressTasks = tasks.filter((t) => t.status === 'in_progress');
     const todoTasks = tasks.filter((t) => t.status === 'todo');
 
-    // Próximas provas
+    // Próximas provas (filtra apenas datas de hoje em diante)
     const upcomingExams = courses
       .flatMap((c) =>
         (c.grades || [])
-          .filter((g: any) => g.date)
+          .filter((g: any) => g.date && String(g.date) >= todayStr)
           .map((g: any) => ({
             courseCode: c.code,
             courseName: c.name,
             examName: g.name,
-            date: g.date,
+            date: String(g.date),
           }))
       )
       .sort((a, b) => a.date.localeCompare(b.date));
@@ -812,7 +1049,7 @@ async function executeTool(name: string, args: any): Promise<string> {
       if (overdueBills.length > 0) {
         output += `### ⚠️ Contas ATRASADAS:\n`;
         overdueBills.forEach((b) => {
-          output += `- ❗ **${b.title}**: R$ ${Number(b.amount || 0).toFixed(2)} (Venceu em: ${b.dueDate})\n`;
+          output += `- ❗ **${b.title}**: R$ ${Number(b.amount || 0).toFixed(2)} (Venceu em: ${formatDateBR(b.dueDate)})\n`;
         });
       }
       if (todayAppointments.length > 0) {
@@ -876,8 +1113,7 @@ async function executeTool(name: string, args: any): Promise<string> {
       let dueDate = cardItem.dueDate ? String(cardItem.dueDate).trim() : todayStr;
       if (dueDate.toLowerCase() === 'hoje') dueDate = todayStr;
       if (dueDate.toLowerCase() === 'amanha' || dueDate.toLowerCase() === 'amanhã') {
-        const tomorrow = new Date(Date.now() + 86400000);
-        dueDate = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+        dueDate = getLocalDateStr(1);
       }
 
       const newTask = {
@@ -968,8 +1204,7 @@ A tarefa **"${task.name}"** foi movida para o status **"${args.newStatus === 'do
     let dueDate = args.dueDate ? String(args.dueDate).trim() : todayStr;
     if (dueDate.toLowerCase() === 'hoje') dueDate = todayStr;
     if (dueDate.toLowerCase() === 'amanha' || dueDate.toLowerCase() === 'amanhã') {
-      const tomorrow = new Date(Date.now() + 86400000);
-      dueDate = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+      dueDate = getLocalDateStr(1);
     }
 
     const newBill = {
@@ -990,7 +1225,7 @@ A tarefa **"${task.name}"** foi movida para o status **"${args.newStatus === 'do
 
 - **Despesa:** ${newBill.title}
 - **Valor:** R$ ${newBill.amount.toFixed(2)}
-- **Data de Vencimento:** ${newBill.dueDate}
+- **Data de Vencimento:** ${formatDateBR(newBill.dueDate)}
 - **Categoria:** ${newBill.category}
 - **Status:** Pendente
 ${newBill.barcodeOrLink ? `- **Código/PIX:** ${newBill.barcodeOrLink}\n` : ''}
@@ -1379,7 +1614,7 @@ A tarefa **"${removed.name}"** foi removida definitivamente do seu quadro de tar
 - **Disciplina:** ${matchedCourse ? `${matchedCourse.code} (${matchedCourse.name})` : 'Geral'}
 - **Fase Inicial:** Fase 1 (Revisão em 1 semana)
 - **Meta de Excelência:** ${newTopic.targetScore}%
-- **Primeira Revisão:** ${newTopic.nextReviewDate} (Hoje)
+- **Primeira Revisão:** ${formatDateBR(newTopic.nextReviewDate)} (Hoje)
 ${newTopic.question ? `- **Pergunta de Fixação:** ${newTopic.question}\n` : ''}
 
 *O assunto foi salvo no Firestore e já está disponível na aba de Recuperação Ativa & Revisões.*`;
@@ -1432,7 +1667,10 @@ ${newTopic.question ? `- **Pergunta de Fixação:** ${newTopic.question}\n` : ''
       daysToAdd = 3; // Reforço necessário em 3 dias
     }
 
-    const nextDateObj = new Date(new Date(newAttempt.date).getTime() + daysToAdd * 86400000);
+    const baseDate = /^\d{4}-\d{2}-\d{2}$/.test(newAttempt.date)
+      ? new Date(`${newAttempt.date}T12:00:00Z`)
+      : new Date(newAttempt.date);
+    const nextDateObj = new Date(baseDate.getTime() + daysToAdd * 86400000);
     const nextReviewDate = nextDateObj.toISOString().split('T')[0];
 
     topic.stage = nextStage;
@@ -1558,14 +1796,36 @@ ${newAttempt.notes ? `- **Observações:** ${newAttempt.notes}\n` : ''}
   throw new Error(`Ferramenta desconhecida: "${name}"`);
 }
 
+const MCP_RESOURCES = [
+  {
+    uri: 'painel://routine',
+    name: 'Rotina de Estudos Atual',
+    description:
+      'Resumo completo da rotina, entregas do dia, tarefas pendentes, próximas provas e pendências financeiras/pessoais.',
+    mimeType: 'text/markdown',
+  },
+  {
+    uri: 'painel://courses',
+    name: 'Disciplinas Matriculadas',
+    description: 'Lista completa de disciplinas, horários, salas, professores e avaliações.',
+    mimeType: 'text/markdown',
+  },
+];
+
+const SUPPORTED_MCP_PROTOCOLS = new Set(['2024-11-05', '2025-03-26', '2025-06-18']);
+
 // ============================================================================
 // HANDLER PRINCIPAL VERCEL SERVERLESS FUNCTION
 // ============================================================================
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Configurar CORS completo para clientes MCP (Gemini, Claude, Webhooks)
+  // Configurar CORS completo para clientes MCP (Gemini, Claude, Cursor, Webhooks)
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Authorization, x-api-key, Accept, Mcp-Session-Id, MCP-Protocol-Version'
+  );
+  res.setHeader('Access-Control-Expose-Headers', 'Mcp-Session-Id');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -1585,23 +1845,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // --------------------------------------------------------------------------
-  // GET: SSE Transport ou Informações da API
+  // DELETE: Encerramento de sessão Streamable HTTP
+  // --------------------------------------------------------------------------
+  if (req.method === 'DELETE') {
+    return res.status(204).end();
+  }
+
+  // --------------------------------------------------------------------------
+  // GET: Informações da API & Diagnóstico (ou 405 para stream SSE puro)
   // --------------------------------------------------------------------------
   if (req.method === 'GET') {
-    const acceptHeader = req.headers.accept || '';
+    const acceptHeader = String(req.headers.accept || '');
 
-    // Se o cliente MCP solicitar SSE (Server-Sent Events)
-    if (acceptHeader.includes('text/event-stream')) {
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-
-      const sessionId = `session-${Date.now()}`;
-      res.write(`event: endpoint\ndata: /api/mcp?sessionId=${sessionId}\n\n`);
-      return res.end();
+    if (
+      acceptHeader.includes('text/event-stream') &&
+      !acceptHeader.includes('application/json') &&
+      !acceptHeader.includes('text/html')
+    ) {
+      res.setHeader('Allow', 'POST, GET, OPTIONS, DELETE');
+      return res.status(405).json({
+        error:
+          'Stream SSE via GET não suportado em modo serverless; utilize Streamable HTTP via POST /api/mcp.',
+      });
     }
 
-    // Resposta amigável ao abrir no navegador / teste
+    const admin = getAdminServices();
+
     return res.status(200).json({
       status: 'online',
       name: 'painel-do-estudante-mcp',
@@ -1623,11 +1892,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           description: 'Verifica assuntos e revisões espaçadas de listas de exercícios com meta de 80%.',
         },
       ],
+      resources: MCP_RESOURCES,
+      diagnostics: {
+        firestoreMode: admin ? 'firebase-admin' : 'rest-fallback',
+        writesReady: Boolean(admin),
+        adminInitError: adminInitError || null,
+        authProtected: Boolean(configuredSecret),
+        defaultTarget:
+          CONFIGURED_DASHBOARD_ID ||
+          (admin ? `auto-uid (${DEFAULT_USER_EMAIL})` : DEFAULT_DASHBOARD_ID),
+        timezone: 'America/Sao_Paulo',
+      },
       usage: {
         geminiConfig: {
           mcpServers: {
             painelDoEstudante: {
-              url: 'https://SEU-DOMINIO.vercel.app/api/mcp',
+              url: 'https://painel-de-estudo-sage.vercel.app/api/mcp',
               transport: 'http',
             },
           },
@@ -1637,11 +1917,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // --------------------------------------------------------------------------
-  // POST: Mensagens JSON-RPC 2.0 (MCP Protocol)
+  // POST: Mensagens JSON-RPC 2.0 (MCP Streamable HTTP Protocol)
   // --------------------------------------------------------------------------
   if (req.method === 'POST') {
-    const body = req.body || {};
-    const { jsonrpc, id, method, params } = body;
+    let body: any = req.body;
+    if (typeof body === 'string') {
+      try {
+        body = JSON.parse(body);
+      } catch {
+        return res.status(400).json({
+          jsonrpc: '2.0',
+          id: null,
+          error: { code: -32700, message: 'JSON inválido no corpo da requisição.' },
+        });
+      }
+    }
+    body = body || {};
+    const { id, method, params } = body;
 
     // Resposta JSON-RPC helper
     const sendResult = (result: any) => {
@@ -1663,8 +1955,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
       // 1. Handshake / Initialize
       if (method === 'initialize') {
+        const clientVersion =
+          typeof params?.protocolVersion === 'string' ? params.protocolVersion : '';
+        const protocolVersion = SUPPORTED_MCP_PROTOCOLS.has(clientVersion)
+          ? clientVersion
+          : '2024-11-05';
+
+        const existingSessionId = req.headers['mcp-session-id'];
+        const sessionId =
+          typeof existingSessionId === 'string' && existingSessionId.trim()
+            ? existingSessionId.trim()
+            : `mcp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        res.setHeader('Mcp-Session-Id', sessionId);
+
         return sendResult({
-          protocolVersion: '2024-11-05',
+          protocolVersion,
           capabilities: {
             tools: {
               listChanged: false,
@@ -1672,7 +1977,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             prompts: {
               listChanged: false,
             },
-            resources: {},
+            resources: {
+              listChanged: false,
+            },
           },
           serverInfo: {
             name: 'painel-do-estudante-mcp',
@@ -1681,19 +1988,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
-      // 2. Notificação de inicialização
-      if (method === 'notifications/initialized') {
-        return res.status(200).json({});
+      // 2. Notificações JSON-RPC (sem id -> 202 Accepted)
+      if (
+        method === 'notifications/initialized' ||
+        (typeof method === 'string' && method.startsWith('notifications/'))
+      ) {
+        if (id === undefined || id === null) {
+          return res.status(202).end();
+        }
+        return sendResult({});
       }
 
-      // 3. Listagem de ferramentas (tools/list)
+      // 3. Ping (keep-alive / healthcheck MCP)
+      if (method === 'ping') {
+        return sendResult({});
+      }
+
+      // 4. Listagem de ferramentas (tools/list)
       if (method === 'tools/list') {
         return sendResult({
           tools: MCP_TOOLS,
         });
       }
 
-      // 4. Execução de ferramenta (tools/call)
+      // 5. Execução de ferramenta (tools/call)
       if (method === 'tools/call') {
         const toolName = params?.name;
         const toolArgs = params?.arguments || {};
@@ -1702,19 +2020,62 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return sendError(-32602, 'Parâmetro "name" da ferramenta é obrigatório');
         }
 
-        const textOutput = await executeTool(toolName, toolArgs);
+        try {
+          const textOutput = await executeTool(toolName, toolArgs);
+          return sendResult({
+            content: [
+              {
+                type: 'text',
+                text: textOutput,
+              },
+            ],
+          });
+        } catch (toolErr: any) {
+          return sendResult({
+            isError: true,
+            content: [
+              {
+                type: 'text',
+                text: `❌ Erro ao executar "${toolName}": ${toolErr?.message || 'Erro desconhecido'}`,
+              },
+            ],
+          });
+        }
+      }
 
+      // 6. Listagem de recursos (resources/list)
+      if (method === 'resources/list') {
         return sendResult({
-          content: [
-            {
-              type: 'text',
-              text: textOutput,
-            },
-          ],
+          resources: MCP_RESOURCES,
         });
       }
 
-      // 5. Listagem de prompts (prompts/list)
+      // 7. Templates de recursos (resources/templates/list)
+      if (method === 'resources/templates/list') {
+        return sendResult({
+          resourceTemplates: [],
+        });
+      }
+
+      // 8. Leitura de recurso (resources/read)
+      if (method === 'resources/read') {
+        const uri = params?.uri;
+        if (uri === 'painel://routine') {
+          const text = await executeTool('get_study_routine', {});
+          return sendResult({
+            contents: [{ uri, mimeType: 'text/markdown', text }],
+          });
+        }
+        if (uri === 'painel://courses') {
+          const text = await executeTool('list_courses', {});
+          return sendResult({
+            contents: [{ uri, mimeType: 'text/markdown', text }],
+          });
+        }
+        return sendError(-32002, `Recurso não encontrado: "${uri || ''}"`);
+      }
+
+      // 9. Listagem de prompts (prompts/list)
       if (method === 'prompts/list') {
         return sendResult({
           prompts: [
@@ -1737,7 +2098,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
-      // 6. Obtenção de prompt (prompts/get)
+      // 10. Obtenção de prompt (prompts/get)
       if (method === 'prompts/get') {
         const promptName = params?.name;
         if (promptName === 'explicar_rotina') {
