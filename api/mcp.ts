@@ -1,10 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { initializeApp, cert, getApps, getApp, type ServiceAccount } from 'firebase-admin/app';
-import { getFirestore, type Firestore } from 'firebase-admin/firestore';
-import { getAuth, type Auth } from 'firebase-admin/auth';
+import { createSign } from 'node:crypto';
 
 // ============================================================================
-// CONFIGURAÇÃO DO FIRESTORE & FIREBASE ADMIN SDK
+// CONFIGURAÇÃO DO FIRESTORE & AUTENTICAÇÃO OAUTH2 (NATIVO NODE:CRYPTO)
 // ============================================================================
 const DEFAULT_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'painel-estudante-8b2c';
 const DEFAULT_DASHBOARD_ID = 'principal';
@@ -31,12 +29,20 @@ const ALLOWED_DASHBOARD_FIELDS = new Set([
   'displayName',
 ]);
 
-let cachedAdmin: { db: Firestore; auth: Auth } | null = null;
-let adminInitAttempted = false;
+interface ServiceAccountCredentials {
+  projectId: string;
+  clientEmail: string;
+  privateKey: string;
+}
+
+let lastEnvSignature = '';
+let cachedServiceAccount: ServiceAccountCredentials | null = null;
+let serviceAccountChecked = false;
 let adminInitError: string | null = null;
+let cachedAccessToken: { token: string; expiresAt: number } | null = null;
 const emailToUidCache = new Map<string, string>();
 
-function normalizeServiceAccountObject(raw: any): ServiceAccount | null {
+function normalizeServiceAccountObject(raw: any): ServiceAccountCredentials | null {
   if (!raw || typeof raw !== 'object') return null;
   const projectId = raw.projectId || raw.project_id || DEFAULT_PROJECT_ID;
   const clientEmail = raw.clientEmail || raw.client_email;
@@ -50,7 +56,7 @@ function normalizeServiceAccountObject(raw: any): ServiceAccount | null {
   };
 }
 
-function parseServiceAccountFromEnv(): ServiceAccount | null {
+function parseServiceAccountFromEnv(): ServiceAccountCredentials | null {
   const rawEnv = process.env.FIREBASE_SERVICE_ACCOUNT?.trim();
   if (rawEnv) {
     let cleaned = rawEnv;
@@ -98,39 +104,76 @@ function parseServiceAccountFromEnv(): ServiceAccount | null {
   return null;
 }
 
-function getAdminServices(): { db: Firestore; auth: Auth } | null {
-  if (adminInitAttempted) return cachedAdmin;
-  adminInitAttempted = true;
-
-  const serviceAccount = parseServiceAccountFromEnv();
-  if (!serviceAccount) {
-    return null;
-  }
-
-  try {
-    const app =
-      getApps().length > 0
-        ? getApp()
-        : initializeApp({
-            credential: cert(serviceAccount),
-            projectId: serviceAccount.projectId || DEFAULT_PROJECT_ID,
-          });
-
-    const db = getFirestore(app);
-    try {
-      db.settings({ ignoreUndefinedProperties: true });
-    } catch {
-      // settings() só pode ser chamado uma vez por instância Firestore
-    }
-    const auth = getAuth(app);
-    cachedAdmin = { db, auth };
+function getServiceAccount(): ServiceAccountCredentials | null {
+  const envSignature = `${process.env.FIREBASE_SERVICE_ACCOUNT || ''}|${process.env.FIREBASE_CLIENT_EMAIL || ''}|${process.env.FIREBASE_PRIVATE_KEY || ''}`;
+  if (envSignature !== lastEnvSignature) {
+    lastEnvSignature = envSignature;
+    cachedServiceAccount = null;
+    serviceAccountChecked = false;
     adminInitError = null;
-    return cachedAdmin;
-  } catch (err: any) {
-    adminInitError = `Falha ao inicializar Firebase Admin: ${err?.message || 'erro desconhecido'}`;
-    cachedAdmin = null;
-    return null;
+    cachedAccessToken = null;
+    emailToUidCache.clear();
   }
+
+  if (serviceAccountChecked) return cachedServiceAccount;
+  serviceAccountChecked = true;
+  cachedServiceAccount = parseServiceAccountFromEnv();
+  return cachedServiceAccount;
+}
+
+async function getGoogleAccessToken(): Promise<string | null> {
+  const sa = getServiceAccount();
+  if (!sa) return null;
+
+  if (cachedAccessToken && Date.now() < cachedAccessToken.expiresAt) {
+    return cachedAccessToken.token;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(
+    JSON.stringify({
+      iss: sa.clientEmail,
+      scope:
+        'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit',
+      aud: 'https://oauth2.googleapis.com/token',
+      iat: now,
+      exp: now + 3600,
+    })
+  ).toString('base64url');
+
+  const signingInput = `${header}.${payload}`;
+  const signer = createSign('RSA-SHA256');
+  signer.update(signingInput);
+  signer.end();
+  const signature = signer.sign(sa.privateKey, 'base64url');
+  const assertion = `${signingInput}.${signature}`;
+
+  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `grant_type=${encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer')}&assertion=${encodeURIComponent(assertion)}`,
+  });
+
+  if (!tokenRes.ok) {
+    const errText = await tokenRes.text().catch(() => '');
+    throw new Error(
+      `Falha ao obter token OAuth2 da conta de serviço (HTTP ${tokenRes.status}): ${errText.slice(0, 200)}`
+    );
+  }
+
+  const tokenJson: any = await tokenRes.json();
+  const accessToken = tokenJson?.access_token;
+  if (!accessToken) {
+    throw new Error('Resposta OAuth2 sem access_token.');
+  }
+
+  const expiresIn = Number(tokenJson.expires_in) || 3600;
+  cachedAccessToken = {
+    token: accessToken,
+    expiresAt: Date.now() + Math.max(60, expiresIn - 120) * 1000,
+  };
+  return accessToken;
 }
 
 function stripUndefined(value: any): any {
@@ -151,17 +194,34 @@ function stripUndefined(value: any): any {
   return out;
 }
 
-async function resolveEmailToUid(email: string, auth: Auth): Promise<string | null> {
+async function resolveEmailToUid(email: string, accessToken: string): Promise<string | null> {
   const normalized = email.trim().toLowerCase();
   if (!normalized) return null;
   const cached = emailToUidCache.get(normalized);
   if (cached) return cached;
 
+  const sa = getServiceAccount();
+  const projectId = sa?.projectId || DEFAULT_PROJECT_ID;
+
   try {
-    const userRecord = await auth.getUserByEmail(normalized);
-    if (userRecord?.uid) {
-      emailToUidCache.set(normalized, userRecord.uid);
-      return userRecord.uid;
+    const res = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/accounts:lookup`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ email: [normalized] }),
+      }
+    );
+    if (res.ok) {
+      const json: any = await res.json();
+      const uid = json?.users?.[0]?.localId;
+      if (uid) {
+        emailToUidCache.set(normalized, uid);
+        return uid;
+      }
     }
   } catch (err: any) {
     console.warn(`Não foi possível resolver UID para ${normalized}:`, err?.message || err);
@@ -169,13 +229,15 @@ async function resolveEmailToUid(email: string, auth: Auth): Promise<string | nu
   return null;
 }
 
-async function resolveTargetDocId(requestedUserId?: string): Promise<string> {
-  const admin = getAdminServices();
+async function resolveTargetDocId(
+  requestedUserId?: string,
+  accessToken?: string | null
+): Promise<string> {
   const reqId = typeof requestedUserId === 'string' ? requestedUserId.trim() : '';
 
   if (reqId && reqId !== DEFAULT_DASHBOARD_ID) {
-    if (reqId.includes('@') && admin?.auth) {
-      const uid = await resolveEmailToUid(reqId, admin.auth);
+    if (reqId.includes('@') && accessToken) {
+      const uid = await resolveEmailToUid(reqId, accessToken);
       if (uid) return uid;
     }
     return reqId;
@@ -189,8 +251,8 @@ async function resolveTargetDocId(requestedUserId?: string): Promise<string> {
     return CONFIGURED_DASHBOARD_ID;
   }
 
-  if (admin?.auth && DEFAULT_USER_EMAIL) {
-    const uid = await resolveEmailToUid(DEFAULT_USER_EMAIL, admin.auth);
+  if (accessToken && DEFAULT_USER_EMAIL) {
+    const uid = await resolveEmailToUid(DEFAULT_USER_EMAIL, accessToken);
     if (uid) return uid;
   }
 
@@ -210,15 +272,13 @@ function toFirestoreValue(val: any): any {
   if (val === null || val === undefined) return { nullValue: null };
   if (typeof val === 'boolean') return { booleanValue: val };
   if (typeof val === 'number') {
+    if (!Number.isFinite(val)) return { doubleValue: 0 };
     return Number.isInteger(val) ? { integerValue: String(val) } : { doubleValue: val };
   }
   if (typeof val === 'string') return { stringValue: val };
   if (Array.isArray(val)) {
-    return {
-      arrayValue: {
-        values: val.filter((v) => v !== undefined).map(toFirestoreValue),
-      },
-    };
+    const values = val.filter((v) => v !== undefined).map(toFirestoreValue);
+    return values.length > 0 ? { arrayValue: { values } } : { arrayValue: {} };
   }
   if (typeof val === 'object') {
     return { mapValue: { fields: toFirestoreFields(val) } };
@@ -253,19 +313,20 @@ function parseFirestoreFields(fields: any): any {
   return result;
 }
 
-// Helper para ler documento do estudante no Firestore (Admin SDK ou fallback REST)
+// Helper para ler documento do estudante no Firestore (OAuth2 Service Account ou fallback REST)
 async function getStudentDashboard(requestedUserId?: string) {
-  const targetDoc = await resolveTargetDocId(requestedUserId);
-  const admin = getAdminServices();
+  const accessToken = await getGoogleAccessToken();
+  const targetDoc = await resolveTargetDocId(requestedUserId, accessToken);
+  const projectId = getServiceAccount()?.projectId || DEFAULT_PROJECT_ID;
 
   const fetchDoc = async (docName: string): Promise<any | null> => {
-    if (admin) {
-      const snap = await admin.db.collection('student_dashboards').doc(docName).get();
-      return snap.exists ? snap.data() || {} : null;
+    const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/student_dashboards/${encodeURIComponent(docName)}`;
+    const headers: Record<string, string> = {};
+    if (accessToken) {
+      headers.Authorization = `Bearer ${accessToken}`;
     }
 
-    const url = `https://firestore.googleapis.com/v1/projects/${DEFAULT_PROJECT_ID}/databases/(default)/documents/student_dashboards/${encodeURIComponent(docName)}`;
-    const res = await fetch(url);
+    const res = await fetch(url, { headers });
     if (res.ok) {
       const json: any = await res.json();
       return parseFirestoreFields(json.fields || {});
@@ -318,8 +379,9 @@ async function getStudentDashboard(requestedUserId?: string) {
 
 // Helper para salvar documento do estudante no Firestore (propaga erros reais)
 async function saveStudentDashboard(requestedUserId: string | undefined, data: any) {
-  const targetDoc = await resolveTargetDocId(requestedUserId);
-  const admin = getAdminServices();
+  const accessToken = await getGoogleAccessToken();
+  const targetDoc = await resolveTargetDocId(requestedUserId, accessToken);
+  const projectId = getServiceAccount()?.projectId || DEFAULT_PROJECT_ID;
 
   const filtered: Record<string, any> = {};
   for (const [k, v] of Object.entries(data || {})) {
@@ -331,26 +393,25 @@ async function saveStudentDashboard(requestedUserId: string | undefined, data: a
     ...filtered,
     updatedAt: new Date().toISOString(),
   });
+  // Nunca enviar createdAt em PATCH para preservar imutabilidade nas regras
+  delete cleanPayload.createdAt;
 
-  if (admin) {
-    await admin.db.collection('student_dashboards').doc(targetDoc).set(cleanPayload, { merge: true });
-    return;
-  }
-
-  // Fallback REST sem envio de createdAt para não violar regras de imutabilidade em updates
-  const restPayload = { ...cleanPayload };
-  delete restPayload.createdAt;
-  const keys = Object.keys(restPayload);
+  const keys = Object.keys(cleanPayload);
   const mask = keys.map((k) => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
-  const url = `https://firestore.googleapis.com/v1/projects/${DEFAULT_PROJECT_ID}/databases/(default)/documents/student_dashboards/${encodeURIComponent(targetDoc)}?${mask}`;
+  const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/student_dashboards/${encodeURIComponent(targetDoc)}?${mask}`;
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
 
   const res = await fetch(url, {
     method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({
-      fields: toFirestoreFields(restPayload),
+      fields: toFirestoreFields(cleanPayload),
     }),
   });
 
@@ -1869,7 +1930,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    const admin = getAdminServices();
+    const sa = getServiceAccount();
 
     return res.status(200).json({
       status: 'online',
@@ -1894,13 +1955,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ],
       resources: MCP_RESOURCES,
       diagnostics: {
-        firestoreMode: admin ? 'firebase-admin' : 'rest-fallback',
-        writesReady: Boolean(admin),
+        firestoreMode: sa ? 'service-account-oauth2' : 'rest-fallback',
+        writesReady: Boolean(sa),
         adminInitError: adminInitError || null,
         authProtected: Boolean(configuredSecret),
         defaultTarget:
           CONFIGURED_DASHBOARD_ID ||
-          (admin ? `auto-uid (${DEFAULT_USER_EMAIL})` : DEFAULT_DASHBOARD_ID),
+          (sa ? `auto-uid (${DEFAULT_USER_EMAIL})` : DEFAULT_DASHBOARD_ID),
         timezone: 'America/Sao_Paulo',
       },
       usage: {
