@@ -540,7 +540,9 @@ async function generateGeminiDigestReport(
   const geminiApiKey = process.env.GEMINI_API_KEY?.trim() || '';
   if (!geminiApiKey) return null;
 
-  const geminiModel = process.env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash';
+  const geminiModel = (
+    process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash'
+  ).replace(/^models\//, '');
   const prompt = [
     'Você é o consultor do Painel do Estudante gerando um resumo matinal compacto para e-mail.',
     'Baseie-se apenas nos dados reais abaixo, sem inventar informações.',
@@ -550,9 +552,9 @@ async function generateGeminiDigestReport(
     contextText,
   ].join('\n');
 
+  const isGemini3 = /^gemini-3/i.test(geminiModel);
   const generationConfig: Record<string, any> = {
-    temperature: 0.3,
-    maxOutputTokens: 1536,
+    maxOutputTokens: 2048,
     responseMimeType: 'application/json',
     responseSchema: {
       type: 'OBJECT',
@@ -598,8 +600,13 @@ async function generateGeminiDigestReport(
     },
   };
 
-  if (geminiModel.includes('2.5')) {
-    generationConfig.thinkingConfig = { thinkingBudget: 0 };
+  if (isGemini3) {
+    generationConfig.thinkingConfig = { thinkingLevel: 'LOW' };
+  } else {
+    generationConfig.temperature = 0.3;
+    if (geminiModel.includes('2.5')) {
+      generationConfig.thinkingConfig = { thinkingBudget: 0 };
+    }
   }
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
@@ -623,7 +630,8 @@ async function generateGeminiDigestReport(
   const json: any = await res.json();
   const parts: any[] = json?.candidates?.[0]?.content?.parts || [];
   const rawText = parts
-    .map((p) => (typeof p?.text === 'string' ? p.text : ''))
+    .filter((p) => typeof p?.text === 'string' && !p?.thought)
+    .map((p) => p.text)
     .join('')
     .trim();
 

@@ -392,7 +392,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const geminiApiKey = process.env.GEMINI_API_KEY?.trim() || '';
-  const geminiModel = process.env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash';
+  const geminiModel = (
+    process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash'
+  ).replace(/^models\//, '');
 
   if (!geminiApiKey) {
     return res.status(503).json({
@@ -464,8 +466,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     contextText,
   ].join('\n');
 
+  const isGemini3 = /^gemini-3/i.test(geminiModel);
   const generationConfig: Record<string, any> = {
-    temperature: 0.3,
     maxOutputTokens: 2048,
     responseMimeType: 'application/json',
     responseSchema: {
@@ -525,8 +527,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     },
   };
 
-  if (geminiModel.includes('2.5')) {
-    generationConfig.thinkingConfig = { thinkingBudget: 0 };
+  if (isGemini3) {
+    generationConfig.thinkingConfig = { thinkingLevel: 'LOW' };
+  } else {
+    generationConfig.temperature = 0.3;
+    if (geminiModel.includes('2.5')) {
+      generationConfig.thinkingConfig = { thinkingBudget: 0 };
+    }
   }
 
   try {
@@ -559,7 +566,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const geminiJson: any = await geminiRes.json();
     const parts: any[] = geminiJson?.candidates?.[0]?.content?.parts || [];
     const text = parts
-      .map((p) => (typeof p?.text === 'string' ? p.text : ''))
+      .filter((p) => typeof p?.text === 'string' && !p?.thought)
+      .map((p) => p.text)
       .join('')
       .trim();
 
