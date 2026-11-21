@@ -2,14 +2,12 @@ import React, { useState, useEffect } from 'react';
 import {
   Course,
   Task,
-  PriorityLevel,
   StudyTopic,
   StudySession,
   NotebookNote,
   PersonalBill,
   PersonalAppointment,
 } from './types';
-import { applyTaskPriority, isValidPriorityLevel } from './priorityUtils';
 import {
   initialCourses,
   initialTasks,
@@ -563,24 +561,16 @@ export const App: React.FC = () => {
         new Date().toISOString().split('T')[0];
       const type = (urlParams.get('type') as any) || 'Trabalho';
       const notes = urlParams.get('notes') || 'Adicionado via Gemini / Gmail';
-      const rawUrgency = urlParams.get('urgency');
-      const rawImportance = urlParams.get('importance');
-      const urgency: PriorityLevel | '' = isValidPriorityLevel(rawUrgency) ? rawUrgency : '';
-      const importance: PriorityLevel | '' = isValidPriorityLevel(rawImportance) ? rawImportance : '';
 
-      const newTask: Task = applyTaskPriority(
-        {
-          id: `task-${Date.now()}`,
-          name,
-          courseId,
-          dueDate,
-          type,
-          status: 'todo',
-          notes,
-        },
-        urgency,
-        importance
-      );
+      const newTask: Task = {
+        id: `task-${Date.now()}`,
+        name,
+        courseId,
+        dueDate,
+        type,
+        status: 'todo',
+        notes,
+      };
 
       handleAddTask(newTask);
       setActiveTab('tasks');
