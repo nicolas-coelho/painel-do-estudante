@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { User } from 'firebase/auth';
 import {
   AlertTriangle,
@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Clock,
   Lightbulb,
   RefreshCw,
   Sparkles,
@@ -17,6 +18,7 @@ import {
 import {
   AdviceCategory,
   AdviceUrgency,
+  AdvisoryPeriod,
   AiAdvisoryReport,
   Course,
   PersonalAppointment,
@@ -25,7 +27,6 @@ import {
   StudyTopic,
   Task,
 } from '../types';
-import { useNotification } from '../context/NotificationContext';
 import { formatDateBR } from '../dateUtils';
 
 interface AiAdvisorCardProps {
@@ -42,7 +43,16 @@ interface AiAdvisorCardProps {
 
 interface CachedAdvisorEntry {
   report: AiAdvisoryReport;
-  dataSignature?: string;
+  slotKey?: string;
+}
+
+interface PeriodSlotInfo {
+  todayStr: string;
+  cycleDate: string;
+  period: AdvisoryPeriod;
+  label: string;
+  nextLabel: string;
+  slotKey: string;
 }
 
 const getLocalDateStr = (d = new Date()) => {
@@ -52,12 +62,52 @@ const getLocalDateStr = (d = new Date()) => {
   return `${year}-${month}-${day}`;
 };
 
+const getCurrentPeriodSlot = (now = new Date()): PeriodSlotInfo => {
+  const todayStr = getLocalDateStr(now);
+  const hour = now.getHours();
+
+  if (hour >= 5 && hour < 12) {
+    return {
+      todayStr,
+      cycleDate: todayStr,
+      period: 'morning',
+      label: 'Manhã',
+      nextLabel: 'Tarde (12h)',
+      slotKey: `${todayStr}:morning`,
+    };
+  }
+
+  if (hour >= 12 && hour < 18) {
+    return {
+      todayStr,
+      cycleDate: todayStr,
+      period: 'afternoon',
+      label: 'Tarde',
+      nextLabel: 'Noite (18h)',
+      slotKey: `${todayStr}:afternoon`,
+    };
+  }
+
+  const cycleDate =
+    hour >= 18
+      ? todayStr
+      : getLocalDateStr(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
+
+  return {
+    todayStr,
+    cycleDate,
+    period: 'night',
+    label: 'Noite',
+    nextLabel: 'Manhã (05h)',
+    slotKey: `${cycleDate}:night`,
+  };
+};
+
 const getLegacyStorageKey = (uid?: string) => `study_${uid || 'guest'}_ai_advisor_report`;
 const getStorageKey = (uid?: string) => `study_${uid || 'guest'}_ai_advisor_report_v2`;
 
 const loadCachedEntry = (uid?: string): CachedAdvisorEntry | null => {
   try {
-    // Remove cache legado que pode conter resumo gerado com dados mock iniciais
     try {
       localStorage.removeItem(getLegacyStorageKey(uid));
     } catch {
@@ -74,17 +124,41 @@ const loadCachedEntry = (uid?: string): CachedAdvisorEntry | null => {
     ) {
       return {
         report: parsed.report,
-        dataSignature:
-          typeof parsed.dataSignature === 'string' ? parsed.dataSignature : undefined,
+        slotKey:
+          typeof parsed.slotKey === 'string'
+            ? parsed.slotKey
+            : typeof parsed.report.slotKey === 'string'
+            ? parsed.report.slotKey
+            : undefined,
       };
     }
     if (parsed && typeof parsed.headline === 'string' && Array.isArray(parsed.topPriorities)) {
-      return { report: parsed };
+      return {
+        report: parsed,
+        slotKey: typeof parsed.slotKey === 'string' ? parsed.slotKey : undefined,
+      };
     }
     return null;
   } catch {
     return null;
   }
+};
+
+const getPeriodDisplayLabel = (period?: AdvisoryPeriod, slotKey?: string): string => {
+  const resolved =
+    period ||
+    (slotKey?.endsWith(':morning')
+      ? 'morning'
+      : slotKey?.endsWith(':afternoon')
+      ? 'afternoon'
+      : slotKey?.endsWith(':night')
+      ? 'night'
+      : undefined);
+
+  if (resolved === 'morning') return 'Manhã';
+  if (resolved === 'afternoon') return 'Tarde';
+  if (resolved === 'night') return 'Noite';
+  return '';
 };
 
 const getTimeframeBadge = (tf: 'hoje' | 'proximos_dias' | 'semana') => {
@@ -141,152 +215,49 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({
   isCloudHydrated = false,
   onNavigateTab,
 }) => {
-  const { showToast } = useNotification();
-  const todayStr = getLocalDateStr();
   const uid = firebaseUser?.uid;
-
-  const [report, setReport] = useState<AiAdvisoryReport | null>(() => loadCachedEntry(uid)?.report || null);
-  const [cachedSignature, setCachedSignature] = useState<string | null>(
-    () => loadCachedEntry(uid)?.dataSignature || null
+  const [currentSlot, setCurrentSlot] = useState<PeriodSlotInfo>(() => getCurrentPeriodSlot());
+  const [report, setReport] = useState<AiAdvisoryReport | null>(
+    () => loadCachedEntry(uid)?.report || null
+  );
+  const [cachedSlotKey, setCachedSlotKey] = useState<string | null>(
+    () => loadCachedEntry(uid)?.slotKey || null
   );
   const [isLoading, setIsLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
-  const [errorState, setErrorState] = useState<{ message: string; missingKey?: boolean } | null>(null);
-  const autoAttemptedRef = React.useRef<string | null>(null);
+  const [errorState, setErrorState] = useState<{ message: string; missingKey?: boolean } | null>(
+    null
+  );
+  const autoAttemptedRef = useRef<string | null>(null);
 
+  // Atualiza o período ativo automaticamente ao virar de turno (05h, 12h, 18h)
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const next = getCurrentPeriodSlot();
+      setCurrentSlot((prev) => (prev.slotKey === next.slotKey ? prev : next));
+    }, 60000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  // Recarrega o cache do usuário quando troca de conta
   useEffect(() => {
     const cached = loadCachedEntry(uid);
     setReport(cached?.report || null);
-    setCachedSignature(cached?.dataSignature || null);
+    setCachedSlotKey(cached?.slotKey || null);
     setErrorState(null);
   }, [uid]);
 
-  const dataSignature = React.useMemo(() => {
-    const taskSig = tasks
-      .map((t) => `${t.id}:${t.status}:${t.dueDate}:${t.urgency || ''}:${t.importance || ''}`)
-      .sort()
-      .join('|');
-    const courseSig = courses
-      .map(
-        (c) =>
-          `${c.id}:${c.inProgress !== false ? 1 : 0}:${(c.grades || [])
-            .map((g) => `${g.id}:${g.date || ''}:${g.grade ?? ''}`)
-            .sort()
-            .join(',')}`
-      )
-      .sort()
-      .join('|');
-    const billSig = personalBills
-      .map((b) => `${b.id}:${b.status}:${b.dueDate}:${b.amount}`)
-      .sort()
-      .join('|');
-    const appSig = personalAppointments
-      .map((a) => `${a.id}:${a.completed ? 1 : 0}:${a.date}:${a.time || ''}`)
-      .sort()
-      .join('|');
-    const topicSig = topics
-      .map((tp) => `${tp.id}:${tp.nextReviewDate}`)
-      .sort()
-      .join('|');
-    const sessionMinutes = sessions.reduce(
-      (acc, s) => acc + (Number(s.durationMinutes) || 0),
-      0
-    );
-    return `${taskSig}#${courseSig}#${billSig}#${appSig}#${topicSig}#${sessions.length}:${sessionMinutes}`;
-  }, [courses, tasks, personalBills, personalAppointments, topics, sessions]);
-
-  const isDataStale = Boolean(
-    isCloudHydrated &&
-      report &&
-      report.referenceDate === todayStr &&
-      cachedSignature &&
-      cachedSignature !== dataSignature
-  );
-
   const pendingTasksCount = tasks.filter((t) => t.status !== 'done').length;
   const urgentTasksCount = tasks.filter(
-    (t) => t.status !== 'done' && Boolean(t.dueDate) && t.dueDate <= todayStr
+    (t) => t.status !== 'done' && Boolean(t.dueDate) && t.dueDate <= currentSlot.todayStr
   ).length;
   const in7Days = getLocalDateStr(new Date(Date.now() + 7 * 86400000));
   const relevantBillsCount = personalBills.filter(
     (b) => b.status !== 'paid' && (!b.dueDate || b.dueDate <= in7Days)
   ).length;
   const dueReviewsCount = topics.filter(
-    (t) => Boolean(t.nextReviewDate) && t.nextReviewDate <= todayStr
+    (t) => Boolean(t.nextReviewDate) && t.nextReviewDate <= currentSlot.todayStr
   ).length;
-
-  const handleGenerate = async (silent = false) => {
-    if (!firebaseUser) {
-      setErrorState({
-        message: 'Faça login na sua conta Google para gerar a consultoria com segurança.',
-      });
-      return;
-    }
-
-    if (!isCloudHydrated) {
-      return;
-    }
-
-    setIsLoading(true);
-    setErrorState(null);
-
-    try {
-      const idToken = await firebaseUser.getIdToken();
-      const res = await fetch('/api/ai-advisor', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({
-          todayStr,
-          courses,
-          tasks,
-          topics,
-          sessions,
-          personalBills,
-          personalAppointments,
-        }),
-      });
-
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !data?.success || !data?.report) {
-        const missingKey = data?.code === 'MISSING_API_KEY';
-        const msg =
-          data?.error || `Não foi possível gerar a consultoria (HTTP ${res.status}).`;
-        setErrorState({ message: msg, missingKey });
-        if (!silent) {
-          showToast('error', 'Consultoria IA', msg);
-        }
-        return;
-      }
-
-      const nextReport: AiAdvisoryReport = data.report;
-      setReport(nextReport);
-      setCachedSignature(dataSignature);
-      setIsExpanded(true);
-      try {
-        const entry: CachedAdvisorEntry = {
-          report: nextReport,
-          dataSignature,
-        };
-        localStorage.setItem(getStorageKey(uid), JSON.stringify(entry));
-      } catch {
-        // ignora se localStorage estiver cheio
-      }
-      if (!silent) {
-        showToast('success', 'Consultoria IA Atualizada', 'Prioridades e lembretes gerados com sucesso.');
-      }
-    } catch (err: any) {
-      const msg = err?.message || 'Erro de conexão ao consultar a IA.';
-      setErrorState({ message: msg });
-      if (!silent) {
-        showToast('error', 'Consultoria IA', msg);
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   useEffect(() => {
     if (!isCloudHydrated || !firebaseUser || !uid || isLoading) return;
@@ -294,43 +265,120 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({
       courses.length > 0 || tasks.length > 0 || personalBills.length > 0;
     if (!hasAnyData) return;
 
+    const activeSlotKey = currentSlot.slotKey;
     const cachedForUser = loadCachedEntry(uid);
     if (
-      report?.referenceDate === todayStr ||
-      cachedForUser?.report.referenceDate === todayStr
+      (report && (cachedSlotKey === activeSlotKey || report.slotKey === activeSlotKey)) ||
+      cachedForUser?.slotKey === activeSlotKey ||
+      cachedForUser?.report.slotKey === activeSlotKey
     ) {
       return;
     }
 
-    const attemptKey = `${uid}:${todayStr}`;
+    const attemptKey = `${uid}:${activeSlotKey}`;
     if (autoAttemptedRef.current === attemptKey) return;
     autoAttemptedRef.current = attemptKey;
 
-    void handleGenerate(true);
+    let cancelled = false;
+
+    const fetchPeriodAdvisory = async () => {
+      setIsLoading(true);
+      setErrorState(null);
+
+      try {
+        const idToken = await firebaseUser.getIdToken();
+        const res = await fetch('/api/ai-advisor', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({
+            todayStr: currentSlot.todayStr,
+            courses,
+            tasks,
+            topics,
+            sessions,
+            personalBills,
+            personalAppointments,
+          }),
+        });
+
+        const data = await res.json().catch(() => null);
+        if (cancelled) return;
+
+        if (!res.ok || !data?.success || !data?.report) {
+          const missingKey = data?.code === 'MISSING_API_KEY';
+          const msg =
+            data?.error || `Não foi possível gerar a consultoria (HTTP ${res.status}).`;
+          setErrorState({ message: msg, missingKey });
+          return;
+        }
+
+        const nextReport: AiAdvisoryReport = data.report;
+        const resolvedSlotKey = nextReport.slotKey || activeSlotKey;
+        setReport(nextReport);
+        setCachedSlotKey(resolvedSlotKey);
+        setIsExpanded(true);
+        try {
+          const entry: CachedAdvisorEntry = {
+            report: nextReport,
+            slotKey: resolvedSlotKey,
+          };
+          localStorage.setItem(getStorageKey(uid), JSON.stringify(entry));
+        } catch {
+          // ignora se localStorage estiver cheio
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setErrorState({ message: err?.message || 'Erro de conexão ao consultar a IA.' });
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void fetchPeriodAdvisory();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     isCloudHydrated,
     firebaseUser,
     uid,
-    todayStr,
-    courses.length,
-    tasks.length,
-    personalBills.length,
-    report?.referenceDate,
+    currentSlot.slotKey,
+    currentSlot.todayStr,
+    courses,
+    tasks,
+    topics,
+    sessions,
+    personalBills,
+    personalAppointments,
+    report,
+    cachedSlotKey,
     isLoading,
   ]);
 
   const formatTimestampBadge = (rep: AiAdvisoryReport) => {
-    if (rep.referenceDate === todayStr) {
-      const d = new Date(rep.generatedAt);
-      if (!isNaN(d.getTime())) {
-        const hh = String(d.getHours()).padStart(2, '0');
-        const mm = String(d.getMinutes()).padStart(2, '0');
-        return `Atualizado hoje às ${hh}:${mm}`;
-      }
-      return 'Atualizado hoje';
+    const periodLabel = getPeriodDisplayLabel(rep.period, rep.slotKey || cachedSlotKey || undefined);
+    const prefix = periodLabel ? `${periodLabel} · ` : '';
+
+    const d = new Date(rep.generatedAt);
+    const timeStr = !isNaN(d.getTime())
+      ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+      : '';
+
+    if (rep.referenceDate === currentSlot.todayStr) {
+      return timeStr ? `${prefix}hoje às ${timeStr}` : `${prefix}hoje`;
+    }
+    if ((rep.slotKey || cachedSlotKey) === currentSlot.slotKey && timeStr) {
+      return `${prefix}${timeStr}`;
     }
     const br = formatDateBR(rep.referenceDate);
-    return `Análise de ${br.slice(0, 5)}`;
+    return `${prefix}${br.slice(0, 5)}`;
   };
 
   return (
@@ -354,11 +402,6 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({
                   {formatTimestampBadge(report)}
                 </span>
               )}
-              {isDataStale && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50">
-                  Dados atualizados — clique em Atualizar
-                </span>
-              )}
             </div>
             {!report && (
               <p className="text-xs text-[#787774] dark:text-[#9b9a97] mt-0.5">
@@ -372,24 +415,29 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({
           </div>
         </div>
 
+        {/* Indicador automático de turno (sem botão manual) + botão recolher/expandir */}
         <div className="flex items-center gap-2 self-start sm:self-auto">
-          <button
-            type="button"
-            onClick={() => handleGenerate(false)}
-            disabled={isLoading || !isCloudHydrated}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs font-medium shadow-xs transition-all"
+          <span
+            title="Atualização automática 3x ao dia: Manhã (05h), Tarde (12h) e Noite (18h)"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-[#e9e9e8] dark:border-[#333] bg-white/80 dark:bg-[#252525] text-[11px] font-medium text-[#787774] dark:text-[#9b9a97] select-none"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading || !isCloudHydrated ? 'animate-spin' : ''}`} />
-            <span>
-              {!isCloudHydrated
-                ? 'Sincronizando...'
-                : isLoading
-                ? 'Analisando...'
-                : report
-                ? 'Atualizar'
-                : 'Gerar Resumo IA'}
-            </span>
-          </button>
+            {!isCloudHydrated ? (
+              <>
+                <RefreshCw className="w-3 h-3 animate-spin text-indigo-500" />
+                <span>Sincronizando...</span>
+              </>
+            ) : isLoading ? (
+              <>
+                <RefreshCw className="w-3 h-3 animate-spin text-indigo-500" />
+                <span>Atualizando ({currentSlot.label})...</span>
+              </>
+            ) : (
+              <>
+                <Clock className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
+                <span>Próxima: {currentSlot.nextLabel}</span>
+              </>
+            )}
+          </span>
 
           {report && (
             <button
@@ -412,7 +460,7 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({
       {isLoading && !report && (
         <div className="p-3 rounded-xl bg-white/80 dark:bg-[#252525]/80 border border-indigo-100 dark:border-indigo-900/40 text-xs text-indigo-700 dark:text-indigo-300 flex items-center gap-2">
           <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
-          <span>Gerando resumo diário com Gemini...</span>
+          <span>Gerando resumo da {currentSlot.label.toLowerCase()} com Gemini...</span>
         </div>
       )}
 

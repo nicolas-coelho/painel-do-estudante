@@ -10,6 +10,7 @@ type AdviceCategory =
   | 'compromisso'
   | 'revisao'
   | 'rotina';
+type AdvisoryPeriod = 'morning' | 'afternoon' | 'night';
 
 interface AiPriorityAction {
   title: string;
@@ -29,6 +30,8 @@ interface AiReminderItem {
 interface AiAdvisoryReport {
   generatedAt: string;
   referenceDate: string;
+  period: AdvisoryPeriod;
+  slotKey: string;
   model: string;
   headline: string;
   summary: string;
@@ -36,6 +39,17 @@ interface AiAdvisoryReport {
   reminders: AiReminderItem[];
   insight: string;
 }
+
+interface SlotInfo {
+  todayStr: string;
+  cycleDate: string;
+  period: AdvisoryPeriod;
+  periodLabel: string;
+  slotKey: string;
+}
+
+const MAX_SLOT_CACHE_SIZE = 200;
+const slotReportCache = new Map<string, AiAdvisoryReport>();
 
 const VALID_TIMEFRAMES = new Set(['hoje', 'proximos_dias', 'semana']);
 const VALID_PRIORITY_CATEGORIES = new Set([
@@ -71,6 +85,56 @@ function addDaysISO(isoDate: string, days: number): string {
   const [, y, m, d] = match;
   const utc = Date.UTC(Number(y), Number(m) - 1, Number(d) + days);
   return new Date(utc).toISOString().split('T')[0];
+}
+
+function getSaoPauloSlotInfo(now = new Date()): SlotInfo {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hour12: false,
+  }).formatToParts(now);
+
+  const getPart = (type: string) => parts.find((p) => p.type === type)?.value || '';
+  const year = getPart('year');
+  const month = getPart('month');
+  const day = getPart('day');
+  const rawHour = Number(getPart('hour'));
+  const hour = rawHour === 24 ? 0 : rawHour;
+
+  const todayStr =
+    year && month && day ? `${year}-${month}-${day}` : getSaoPauloDateStr(0);
+
+  if (hour >= 5 && hour < 12) {
+    return {
+      todayStr,
+      cycleDate: todayStr,
+      period: 'morning',
+      periodLabel: 'Manhã',
+      slotKey: `${todayStr}:morning`,
+    };
+  }
+
+  if (hour >= 12 && hour < 18) {
+    return {
+      todayStr,
+      cycleDate: todayStr,
+      period: 'afternoon',
+      periodLabel: 'Tarde',
+      slotKey: `${todayStr}:afternoon`,
+    };
+  }
+
+  const cycleDate = hour >= 18 ? todayStr : addDaysISO(todayStr, -1);
+  return {
+    todayStr,
+    cycleDate,
+    period: 'night',
+    periodLabel: 'Noite',
+    slotKey: `${cycleDate}:night`,
+  };
 }
 
 function formatDateBR(dateStr?: string | null): string {
@@ -321,7 +385,8 @@ function parseJsonFromGemini(rawText: string): any {
 function normalizeReport(
   raw: any,
   todayStr: string,
-  model: string
+  model: string,
+  slot: SlotInfo
 ): AiAdvisoryReport {
   const headline =
     typeof raw?.headline === 'string' && raw.headline.trim()
@@ -373,6 +438,8 @@ function normalizeReport(
   return {
     generatedAt: new Date().toISOString(),
     referenceDate: todayStr,
+    period: slot.period,
+    slotKey: slot.slotKey,
     model,
     headline,
     summary,
@@ -440,6 +507,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
+  const slot = getSaoPauloSlotInfo();
+  const cacheKey = `${authUser.uid}:${slot.slotKey}`;
+  const cachedReport = slotReportCache.get(cacheKey);
+  if (cachedReport) {
+    return res.status(200).json({
+      success: true,
+      report: cachedReport,
+      cached: true,
+    });
+  }
+
   let body: any = req.body;
   if (typeof body === 'string') {
     try {
@@ -450,16 +528,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const rawToday = typeof body?.todayStr === 'string' ? body.todayStr.trim() : '';
-  const todayStr = /^\d{4}-\d{2}-\d{2}$/.test(rawToday) ? rawToday : getSaoPauloDateStr();
+  const todayStr = /^\d{4}-\d{2}-\d{2}$/.test(rawToday) ? rawToday : slot.todayStr;
   const contextText = buildCompactContext(body || {}, todayStr);
 
   const prompt = [
     'Você é o consultor pessoal de produtividade acadêmica e finanças do Painel do Estudante.',
     'Analise exclusivamente os dados reais abaixo e gere um RESUMO COMPACTO em português brasileiro.',
+    `PERÍODO ATUAL: ${slot.periodLabel}`,
     'Regras obrigatórias:',
     '1. Não invente tarefas, valores, datas ou disciplinas que não estejam nos dados.',
     '2. Ordem de prioridade: (a) contas/entregas/compromissos atrasados ou de hoje, (b) atividades Q1 (Fazer Agora), (c) provas nos próximos dias e contas perto do vencimento, (d) atividades Q2 (Agendar) e revisões vencidas.',
-    '3. Se houver atividades sem classificação Eisenhower, lembre brevemente nos lembretes.',
+    '3. Adapte o tom das sugestões ao período atual (manhã, tarde ou noite) e lembre brevemente se houver atividades sem classificação Eisenhower.',
     '4. Seja conciso e acionável: headline curta (<= 10 palavras), summary em 1-2 frases, até 4 itens em topPriorities e até 4 itens em reminders.',
     '',
     'DADOS DO ESTUDANTE:',
@@ -579,11 +658,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const parsed = parseJsonFromGemini(text);
-    const report = normalizeReport(parsed, todayStr, geminiModel);
+    const report = normalizeReport(parsed, todayStr, geminiModel, slot);
+
+    if (slotReportCache.size >= MAX_SLOT_CACHE_SIZE) {
+      const oldestKey = slotReportCache.keys().next().value;
+      if (oldestKey) slotReportCache.delete(oldestKey);
+    }
+    slotReportCache.set(cacheKey, report);
 
     return res.status(200).json({
       success: true,
       report,
+      cached: false,
     });
   } catch (err: any) {
     const isTimeout = err?.name === 'TimeoutError' || err?.name === 'AbortError';

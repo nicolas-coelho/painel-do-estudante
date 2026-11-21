@@ -178,9 +178,13 @@ export interface AiReminderItem {
   detail: string;
 }
 
+export type AdvisoryPeriod = 'morning' | 'afternoon' | 'night';
+
 export interface AiAdvisoryReport {
   generatedAt: string;
   referenceDate: string;
+  period?: AdvisoryPeriod;
+  slotKey?: string;
   model: string;
   headline: string;
   summary: string;
