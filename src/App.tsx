@@ -125,6 +125,7 @@ export const App: React.FC = () => {
 
   // Trava de segurança: impede gravar na nuvem antes de concluir a leitura inicial do Firestore
   const cloudHydratedRef = React.useRef<boolean>(false);
+  const [isCloudHydrated, setIsCloudHydrated] = useState<boolean>(false);
 
   // Helper para salvar na nuvem de forma estritamente isolada por usuário
   const syncEntityToCloud = (key: string, data: any) => {
@@ -340,9 +341,11 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (!firebaseUser) {
       cloudHydratedRef.current = false;
+      setIsCloudHydrated(false);
       return;
     }
     cloudHydratedRef.current = false;
+    setIsCloudHydrated(false);
     const docId = firebaseUser.uid;
 
     // Carrega o cache local específico deste usuário imediatamente ao alternar/conectar
@@ -363,6 +366,67 @@ export const App: React.FC = () => {
     const userCal = loadUserState<string>('calendarId', firebaseUser.email || '', docId);
     if (userCal) setCalendarId(userCal);
 
+    const applyDashboardSnapshot = (
+      snapshotData: any,
+      opts?: { clearMissingWhenNoLocalCache?: boolean }
+    ) => {
+      const clearMissing = Boolean(opts?.clearMissingWhenNoLocalCache);
+
+      if (Array.isArray(snapshotData?.courses)) {
+        setCourses(snapshotData.courses);
+        saveUserState('courses', snapshotData.courses, docId);
+      } else if (clearMissing && userCourses.length === 0) {
+        setCourses([]);
+      }
+
+      if (Array.isArray(snapshotData?.tasks)) {
+        setTasks(snapshotData.tasks);
+        saveUserState('tasks', snapshotData.tasks, docId);
+      } else if (clearMissing && userTasks.length === 0) {
+        setTasks([]);
+      }
+
+      if (Array.isArray(snapshotData?.topics)) {
+        setTopics(snapshotData.topics);
+        saveUserState('topics', snapshotData.topics, docId);
+      } else if (clearMissing && userTopics.length === 0) {
+        setTopics([]);
+      }
+
+      if (Array.isArray(snapshotData?.sessions)) {
+        setSessions(snapshotData.sessions);
+        saveUserState('sessions', snapshotData.sessions, docId);
+      } else if (clearMissing && userSessions.length === 0) {
+        setSessions([]);
+      }
+
+      if (Array.isArray(snapshotData?.notes)) {
+        setNotes(snapshotData.notes);
+        saveUserState('notes', snapshotData.notes, docId);
+      } else if (clearMissing && userNotes.length === 0) {
+        setNotes([]);
+      }
+
+      if (Array.isArray(snapshotData?.personalBills)) {
+        setPersonalBills(snapshotData.personalBills);
+        saveUserState('personalBills', snapshotData.personalBills, docId);
+      } else if (clearMissing && userBills.length === 0) {
+        setPersonalBills([]);
+      }
+
+      if (Array.isArray(snapshotData?.personalAppointments)) {
+        setPersonalAppointments(snapshotData.personalAppointments);
+        saveUserState('personalAppointments', snapshotData.personalAppointments, docId);
+      } else if (clearMissing && userApps.length === 0) {
+        setPersonalAppointments([]);
+      }
+
+      if (typeof snapshotData?.calendarId === 'string') {
+        setCalendarId(snapshotData.calendarId);
+        saveUserState('calendarId', snapshotData.calendarId, docId);
+      }
+    };
+
     const unsub = subscribeToFirestore(docId, async (data, metadata) => {
       // Ignora evento disparado pelas nossas próprias alterações em andamento locais
       if (metadata?.hasPendingWrites) return;
@@ -373,7 +437,9 @@ export const App: React.FC = () => {
         // Trava 1: Dupla checagem direta no Firestore antes de criar documento inicial
         const serverCheck = await loadFromFirestore(docId);
         if (serverCheck) {
+          applyDashboardSnapshot(serverCheck, { clearMissingWhenNoLocalCache: true });
           cloudHydratedRef.current = true;
+          setIsCloudHydrated(true);
           return;
         }
 
@@ -386,7 +452,7 @@ export const App: React.FC = () => {
           userNotes.length > 0;
 
         if (hasLocalData) {
-          await saveToFirestore(docId, {
+          const localPayload = {
             userEmail: firebaseUser.email || '',
             displayName: firebaseUser.displayName || '',
             courses: userCourses,
@@ -398,8 +464,11 @@ export const App: React.FC = () => {
             personalAppointments: userApps,
             calendarId: userCal || firebaseUser.email || '',
             createdAt: new Date().toISOString(),
-          });
+          };
+          applyDashboardSnapshot(localPayload);
+          await saveToFirestore(docId, localPayload);
           cloudHydratedRef.current = true;
+          setIsCloudHydrated(true);
           return;
         }
 
@@ -407,7 +476,7 @@ export const App: React.FC = () => {
         if (firebaseUser.email?.toLowerCase() === 'nicolasplcoelho@gmail.com') {
           const legacyData = await loadFromFirestore('principal');
           if (legacyData && Array.isArray(legacyData.courses)) {
-            await saveToFirestore(docId, {
+            const migratedPayload = {
               courses: legacyData.courses,
               tasks: legacyData.tasks || [],
               topics: legacyData.topics || [],
@@ -419,8 +488,11 @@ export const App: React.FC = () => {
               userEmail: firebaseUser.email || '',
               displayName: firebaseUser.displayName || '',
               createdAt: new Date().toISOString(),
-            });
+            };
+            applyDashboardSnapshot(migratedPayload, { clearMissingWhenNoLocalCache: true });
+            await saveToFirestore(docId, migratedPayload);
             cloudHydratedRef.current = true;
+            setIsCloudHydrated(true);
             return;
           }
         }
@@ -449,6 +521,7 @@ export const App: React.FC = () => {
         setPersonalAppointments(initialPersonalAppointments);
         setCalendarId(firebaseUser.email || '');
         cloudHydratedRef.current = true;
+        setIsCloudHydrated(true);
         return;
       }
 
@@ -464,39 +537,8 @@ export const App: React.FC = () => {
       }
 
       cloudHydratedRef.current = true;
-
-      if (Array.isArray(data.courses)) {
-        setCourses(data.courses);
-        saveUserState('courses', data.courses, docId);
-      }
-      if (Array.isArray(data.tasks)) {
-        setTasks(data.tasks);
-        saveUserState('tasks', data.tasks, docId);
-      }
-      if (Array.isArray(data.topics)) {
-        setTopics(data.topics);
-        saveUserState('topics', data.topics, docId);
-      }
-      if (Array.isArray(data.sessions)) {
-        setSessions(data.sessions);
-        saveUserState('sessions', data.sessions, docId);
-      }
-      if (Array.isArray(data.notes)) {
-        setNotes(data.notes);
-        saveUserState('notes', data.notes, docId);
-      }
-      if (Array.isArray(data.personalBills)) {
-        setPersonalBills(data.personalBills);
-        saveUserState('personalBills', data.personalBills, docId);
-      }
-      if (Array.isArray(data.personalAppointments)) {
-        setPersonalAppointments(data.personalAppointments);
-        saveUserState('personalAppointments', data.personalAppointments, docId);
-      }
-      if (typeof data.calendarId === 'string') {
-        setCalendarId(data.calendarId);
-        saveUserState('calendarId', data.calendarId, docId);
-      }
+      applyDashboardSnapshot(data, { clearMissingWhenNoLocalCache: true });
+      setIsCloudHydrated(true);
     });
 
     return () => unsub();
@@ -966,6 +1008,7 @@ export const App: React.FC = () => {
             personalBills={personalBills}
             personalAppointments={personalAppointments}
             firebaseUser={firebaseUser}
+            isCloudHydrated={isCloudHydrated}
             onAddTask={handleAddTask}
             onUpdateTask={handleUpdateTask}
             onDeleteTask={handleDeleteTask}

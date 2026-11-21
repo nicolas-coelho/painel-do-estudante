@@ -36,7 +36,13 @@ interface AiAdvisorCardProps {
   personalBills: PersonalBill[];
   personalAppointments: PersonalAppointment[];
   firebaseUser: User | null;
+  isCloudHydrated?: boolean;
   onNavigateTab?: (tab: string) => void;
+}
+
+interface CachedAdvisorEntry {
+  report: AiAdvisoryReport;
+  dataSignature?: string;
 }
 
 const getLocalDateStr = (d = new Date()) => {
@@ -46,15 +52,34 @@ const getLocalDateStr = (d = new Date()) => {
   return `${year}-${month}-${day}`;
 };
 
-const getStorageKey = (uid?: string) => `study_${uid || 'guest'}_ai_advisor_report`;
+const getLegacyStorageKey = (uid?: string) => `study_${uid || 'guest'}_ai_advisor_report`;
+const getStorageKey = (uid?: string) => `study_${uid || 'guest'}_ai_advisor_report_v2`;
 
-const loadCachedReport = (uid?: string): AiAdvisoryReport | null => {
+const loadCachedEntry = (uid?: string): CachedAdvisorEntry | null => {
   try {
+    // Remove cache legado que pode conter resumo gerado com dados mock iniciais
+    try {
+      localStorage.removeItem(getLegacyStorageKey(uid));
+    } catch {
+      // ignora
+    }
+
     const raw = localStorage.getItem(getStorageKey(uid));
     if (!raw) return null;
     const parsed = JSON.parse(raw);
+    if (
+      parsed?.report &&
+      typeof parsed.report.headline === 'string' &&
+      Array.isArray(parsed.report.topPriorities)
+    ) {
+      return {
+        report: parsed.report,
+        dataSignature:
+          typeof parsed.dataSignature === 'string' ? parsed.dataSignature : undefined,
+      };
+    }
     if (parsed && typeof parsed.headline === 'string' && Array.isArray(parsed.topPriorities)) {
-      return parsed;
+      return { report: parsed };
     }
     return null;
   } catch {
@@ -113,22 +138,70 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({
   personalBills,
   personalAppointments,
   firebaseUser,
+  isCloudHydrated = false,
   onNavigateTab,
 }) => {
   const { showToast } = useNotification();
   const todayStr = getLocalDateStr();
   const uid = firebaseUser?.uid;
 
-  const [report, setReport] = useState<AiAdvisoryReport | null>(() => loadCachedReport(uid));
+  const [report, setReport] = useState<AiAdvisoryReport | null>(() => loadCachedEntry(uid)?.report || null);
+  const [cachedSignature, setCachedSignature] = useState<string | null>(
+    () => loadCachedEntry(uid)?.dataSignature || null
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
   const [errorState, setErrorState] = useState<{ message: string; missingKey?: boolean } | null>(null);
   const autoAttemptedRef = React.useRef<string | null>(null);
 
   useEffect(() => {
-    setReport(loadCachedReport(uid));
+    const cached = loadCachedEntry(uid);
+    setReport(cached?.report || null);
+    setCachedSignature(cached?.dataSignature || null);
     setErrorState(null);
   }, [uid]);
+
+  const dataSignature = React.useMemo(() => {
+    const taskSig = tasks
+      .map((t) => `${t.id}:${t.status}:${t.dueDate}:${t.urgency || ''}:${t.importance || ''}`)
+      .sort()
+      .join('|');
+    const courseSig = courses
+      .map(
+        (c) =>
+          `${c.id}:${c.inProgress !== false ? 1 : 0}:${(c.grades || [])
+            .map((g) => `${g.id}:${g.date || ''}:${g.grade ?? ''}`)
+            .sort()
+            .join(',')}`
+      )
+      .sort()
+      .join('|');
+    const billSig = personalBills
+      .map((b) => `${b.id}:${b.status}:${b.dueDate}:${b.amount}`)
+      .sort()
+      .join('|');
+    const appSig = personalAppointments
+      .map((a) => `${a.id}:${a.completed ? 1 : 0}:${a.date}:${a.time || ''}`)
+      .sort()
+      .join('|');
+    const topicSig = topics
+      .map((tp) => `${tp.id}:${tp.nextReviewDate}`)
+      .sort()
+      .join('|');
+    const sessionMinutes = sessions.reduce(
+      (acc, s) => acc + (Number(s.durationMinutes) || 0),
+      0
+    );
+    return `${taskSig}#${courseSig}#${billSig}#${appSig}#${topicSig}#${sessions.length}:${sessionMinutes}`;
+  }, [courses, tasks, personalBills, personalAppointments, topics, sessions]);
+
+  const isDataStale = Boolean(
+    isCloudHydrated &&
+      report &&
+      report.referenceDate === todayStr &&
+      cachedSignature &&
+      cachedSignature !== dataSignature
+  );
 
   const pendingTasksCount = tasks.filter((t) => t.status !== 'done').length;
   const urgentTasksCount = tasks.filter(
@@ -147,6 +220,10 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({
       setErrorState({
         message: 'Faça login na sua conta Google para gerar a consultoria com segurança.',
       });
+      return;
+    }
+
+    if (!isCloudHydrated) {
       return;
     }
 
@@ -186,9 +263,14 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({
 
       const nextReport: AiAdvisoryReport = data.report;
       setReport(nextReport);
+      setCachedSignature(dataSignature);
       setIsExpanded(true);
       try {
-        localStorage.setItem(getStorageKey(uid), JSON.stringify(nextReport));
+        const entry: CachedAdvisorEntry = {
+          report: nextReport,
+          dataSignature,
+        };
+        localStorage.setItem(getStorageKey(uid), JSON.stringify(entry));
       } catch {
         // ignora se localStorage estiver cheio
       }
@@ -207,13 +289,16 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({
   };
 
   useEffect(() => {
-    if (!firebaseUser || !uid || isLoading) return;
+    if (!isCloudHydrated || !firebaseUser || !uid || isLoading) return;
     const hasAnyData =
       courses.length > 0 || tasks.length > 0 || personalBills.length > 0;
     if (!hasAnyData) return;
 
-    const cachedForUser = loadCachedReport(uid);
-    if (report?.referenceDate === todayStr || cachedForUser?.referenceDate === todayStr) {
+    const cachedForUser = loadCachedEntry(uid);
+    if (
+      report?.referenceDate === todayStr ||
+      cachedForUser?.report.referenceDate === todayStr
+    ) {
       return;
     }
 
@@ -222,7 +307,17 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({
     autoAttemptedRef.current = attemptKey;
 
     void handleGenerate(true);
-  }, [firebaseUser, uid, todayStr, courses.length, tasks.length, personalBills.length, report?.referenceDate, isLoading]);
+  }, [
+    isCloudHydrated,
+    firebaseUser,
+    uid,
+    todayStr,
+    courses.length,
+    tasks.length,
+    personalBills.length,
+    report?.referenceDate,
+    isLoading,
+  ]);
 
   const formatTimestampBadge = (rep: AiAdvisoryReport) => {
     if (rep.referenceDate === todayStr) {
@@ -259,12 +354,19 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({
                   {formatTimestampBadge(report)}
                 </span>
               )}
+              {isDataStale && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50">
+                  Dados atualizados — clique em Atualizar
+                </span>
+              )}
             </div>
             {!report && (
               <p className="text-xs text-[#787774] dark:text-[#9b9a97] mt-0.5">
-                {pendingTasksCount} atividade(s) pendente(s)
-                {urgentTasksCount > 0 ? ` (${urgentTasksCount} hoje/atrasadas)` : ''} •{' '}
-                {relevantBillsCount} conta(s) próxima(s)/atrasada(s) • {dueReviewsCount} revisão(ões)
+                {!isCloudHydrated
+                  ? 'Sincronizando seus dados da nuvem...'
+                  : `${pendingTasksCount} atividade(s) pendente(s)${
+                      urgentTasksCount > 0 ? ` (${urgentTasksCount} hoje/atrasadas)` : ''
+                    } • ${relevantBillsCount} conta(s) próxima(s)/atrasada(s) • ${dueReviewsCount} revisão(ões)`}
               </p>
             )}
           </div>
@@ -274,12 +376,14 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({
           <button
             type="button"
             onClick={() => handleGenerate(false)}
-            disabled={isLoading}
+            disabled={isLoading || !isCloudHydrated}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs font-medium shadow-xs transition-all"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading || !isCloudHydrated ? 'animate-spin' : ''}`} />
             <span>
-              {isLoading
+              {!isCloudHydrated
+                ? 'Sincronizando...'
+                : isLoading
                 ? 'Analisando...'
                 : report
                 ? 'Atualizar'

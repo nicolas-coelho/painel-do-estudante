@@ -55,6 +55,7 @@ interface HomeTabProps {
   personalBills?: PersonalBill[];
   personalAppointments?: PersonalAppointment[];
   firebaseUser?: User | null;
+  isCloudHydrated?: boolean;
   onAddTask: (task: Task) => void;
   onUpdateTask: (task: Task) => void;
   onDeleteTask: (id: string) => void;
@@ -80,6 +81,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
   personalBills = [],
   personalAppointments = [],
   firebaseUser = null,
+  isCloudHydrated = false,
   onAddTask,
   onUpdateTask,
   onDeleteTask,
@@ -377,6 +379,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
         personalBills={personalBills}
         personalAppointments={personalAppointments}
         firebaseUser={firebaseUser}
+        isCloudHydrated={isCloudHydrated}
         onNavigateTab={onNavigateTab}
       />
 
