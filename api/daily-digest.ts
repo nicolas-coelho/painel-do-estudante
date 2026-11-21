@@ -1,11 +1,17 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { Resend } from 'resend';
+import { createSign } from 'node:crypto';
 
-// Configurações padrão
+// ============================================================================
+// CONFIGURAÇÕES PADRÃO & AUTENTICAÇÃO OAUTH2 (NATIVO NODE:CRYPTO)
+// ============================================================================
 const DEFAULT_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'painel-estudante-8b2c';
-const DEFAULT_DASHBOARD_ID = process.env.DEFAULT_DASHBOARD_ID || 'principal';
-const TARGET_EMAIL = process.env.NOTIFICATION_EMAIL || 'nicolasplcoelho@gmail.com';
-const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const DEFAULT_DASHBOARD_ID = 'principal';
+
+interface ServiceAccountCredentials {
+  projectId: string;
+  clientEmail: string;
+  privateKey: string;
+}
 
 interface Task {
   id: string;
@@ -37,6 +43,229 @@ interface StudyTopic {
   courseId: string;
 }
 
+interface PersonalBill {
+  id: string;
+  title: string;
+  amount: number;
+  dueDate: string;
+  category?: string;
+  status: string;
+}
+
+interface PersonalAppointment {
+  id: string;
+  title: string;
+  date: string;
+  time?: string;
+  completed?: boolean;
+}
+
+let lastEnvSignature = '';
+let cachedServiceAccount: ServiceAccountCredentials | null = null;
+let serviceAccountChecked = false;
+let cachedAccessToken: { token: string; expiresAt: number } | null = null;
+const emailToUidCache = new Map<string, string>();
+
+function normalizeServiceAccountObject(raw: any): ServiceAccountCredentials | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const projectId = raw.projectId || raw.project_id || DEFAULT_PROJECT_ID;
+  const clientEmail = raw.clientEmail || raw.client_email;
+  const privateKeyRaw = raw.privateKey || raw.private_key;
+  if (!clientEmail || !privateKeyRaw) return null;
+
+  return {
+    projectId: String(projectId),
+    clientEmail: String(clientEmail),
+    privateKey: String(privateKeyRaw).replace(/\\n/g, '\n'),
+  };
+}
+
+function parseServiceAccountFromEnv(): ServiceAccountCredentials | null {
+  const rawEnv = process.env.FIREBASE_SERVICE_ACCOUNT?.trim();
+  if (rawEnv) {
+    let cleaned = rawEnv;
+    if (
+      (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+      (cleaned.startsWith("'") && cleaned.endsWith("'"))
+    ) {
+      cleaned = cleaned.slice(1, -1).trim();
+    }
+
+    const candidates = [cleaned];
+    if (!cleaned.startsWith('{')) {
+      try {
+        candidates.push(Buffer.from(cleaned, 'base64').toString('utf8'));
+      } catch {
+        // ignora se não for Base64 válido
+      }
+    }
+
+    for (const candidate of candidates) {
+      try {
+        const parsed = JSON.parse(candidate);
+        const normalized = normalizeServiceAccountObject(parsed);
+        if (normalized) return normalized;
+      } catch {
+        // tenta próximo formato
+      }
+    }
+    return null;
+  }
+
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL?.trim();
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.trim();
+  if (clientEmail && privateKey) {
+    return {
+      projectId: DEFAULT_PROJECT_ID,
+      clientEmail,
+      privateKey: privateKey.replace(/\\n/g, '\n'),
+    };
+  }
+
+  return null;
+}
+
+function getServiceAccount(): ServiceAccountCredentials | null {
+  const envSignature = `${process.env.FIREBASE_SERVICE_ACCOUNT || ''}|${process.env.FIREBASE_CLIENT_EMAIL || ''}|${process.env.FIREBASE_PRIVATE_KEY || ''}`;
+  if (envSignature !== lastEnvSignature) {
+    lastEnvSignature = envSignature;
+    cachedServiceAccount = null;
+    serviceAccountChecked = false;
+    cachedAccessToken = null;
+    emailToUidCache.clear();
+  }
+
+  if (serviceAccountChecked) return cachedServiceAccount;
+  serviceAccountChecked = true;
+  cachedServiceAccount = parseServiceAccountFromEnv();
+  return cachedServiceAccount;
+}
+
+async function getGoogleAccessToken(): Promise<string | null> {
+  const sa = getServiceAccount();
+  if (!sa) return null;
+
+  if (cachedAccessToken && Date.now() < cachedAccessToken.expiresAt) {
+    return cachedAccessToken.token;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(
+    JSON.stringify({
+      iss: sa.clientEmail,
+      scope:
+        'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit',
+      aud: 'https://oauth2.googleapis.com/token',
+      iat: now,
+      exp: now + 3600,
+    })
+  ).toString('base64url');
+
+  const signingInput = `${header}.${payload}`;
+  const signer = createSign('RSA-SHA256');
+  signer.update(signingInput);
+  signer.end();
+  const signature = signer.sign(sa.privateKey, 'base64url');
+  const assertion = `${signingInput}.${signature}`;
+
+  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `grant_type=${encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer')}&assertion=${encodeURIComponent(assertion)}`,
+  });
+
+  if (!tokenRes.ok) {
+    const errText = await tokenRes.text().catch(() => '');
+    throw new Error(
+      `Falha ao obter token OAuth2 da conta de serviço (HTTP ${tokenRes.status}): ${errText.slice(0, 200)}`
+    );
+  }
+
+  const tokenJson: any = await tokenRes.json();
+  const accessToken = tokenJson?.access_token;
+  if (!accessToken) {
+    throw new Error('Resposta OAuth2 sem access_token.');
+  }
+
+  const expiresIn = Number(tokenJson.expires_in) || 3600;
+  cachedAccessToken = {
+    token: accessToken,
+    expiresAt: Date.now() + Math.max(60, expiresIn - 120) * 1000,
+  };
+  return accessToken;
+}
+
+async function resolveEmailToUid(email: string, accessToken: string): Promise<string | null> {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return null;
+  const cached = emailToUidCache.get(normalized);
+  if (cached) return cached;
+
+  const sa = getServiceAccount();
+  const projectId = sa?.projectId || DEFAULT_PROJECT_ID;
+
+  try {
+    const res = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/accounts:lookup`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ email: [normalized] }),
+      }
+    );
+    if (res.ok) {
+      const json: any = await res.json();
+      const uid = json?.users?.[0]?.localId;
+      if (uid) {
+        emailToUidCache.set(normalized, uid);
+        return uid;
+      }
+    }
+  } catch (err: any) {
+    console.warn(`Não foi possível resolver UID para ${normalized}:`, err?.message || err);
+  }
+  return null;
+}
+
+async function resolveTargetDocId(
+  requestedUserId?: string,
+  accessToken?: string | null
+): Promise<string> {
+  const reqId = typeof requestedUserId === 'string' ? requestedUserId.trim() : '';
+  const configuredDashboardId = process.env.DEFAULT_DASHBOARD_ID?.trim() || '';
+  const defaultEmail =
+    process.env.DEFAULT_USER_EMAIL?.trim() ||
+    process.env.NOTIFICATION_EMAIL?.trim() ||
+    'nicolasplcoelho@gmail.com';
+
+  if (reqId && reqId !== DEFAULT_DASHBOARD_ID) {
+    if (reqId.includes('@') && accessToken) {
+      const uid = await resolveEmailToUid(reqId, accessToken);
+      if (uid) return uid;
+    }
+    return reqId;
+  }
+
+  if (reqId === DEFAULT_DASHBOARD_ID) {
+    return DEFAULT_DASHBOARD_ID;
+  }
+
+  if (configuredDashboardId && configuredDashboardId !== DEFAULT_DASHBOARD_ID) {
+    return configuredDashboardId;
+  }
+
+  if (accessToken && defaultEmail) {
+    const uid = await resolveEmailToUid(defaultEmail, accessToken);
+    if (uid) return uid;
+  }
+
+  return DEFAULT_DASHBOARD_ID;
+}
+
 // Converte valores da REST API do Firestore para JSON comum
 function parseFirestoreValue(val: any): any {
   if (!val || typeof val !== 'object') return val;
@@ -59,37 +288,88 @@ function parseFirestoreValue(val: any): any {
   return val;
 }
 
-async function fetchDashboardData(userId: string = DEFAULT_DASHBOARD_ID): Promise<{
+async function fetchDashboardData(requestedUserId?: string): Promise<{
   courses: Course[];
   tasks: Task[];
   topics: StudyTopic[];
+  personalBills: PersonalBill[];
+  personalAppointments: PersonalAppointment[];
   userEmail?: string;
+  targetDoc: string;
+  firestoreMode: 'service-account-oauth2' | 'rest-fallback';
 }> {
-  const url = `https://firestore.googleapis.com/v1/projects/${DEFAULT_PROJECT_ID}/databases/(default)/documents/student_dashboards/${userId}`;
-  const res = await fetch(url);
-  if (!res.ok) {
+  const accessToken = await getGoogleAccessToken();
+  const targetDoc = await resolveTargetDocId(requestedUserId, accessToken);
+  const projectId = getServiceAccount()?.projectId || DEFAULT_PROJECT_ID;
+
+  const fetchDoc = async (docName: string): Promise<Record<string, any> | null> => {
+    const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/student_dashboards/${encodeURIComponent(docName)}`;
+    const headers: Record<string, string> = {};
+    if (accessToken) {
+      headers.Authorization = `Bearer ${accessToken}`;
+    }
+    const res = await fetch(url, { headers });
+    if (res.ok) {
+      const rawDoc: any = await res.json();
+      const fields = rawDoc.fields || {};
+      const parsed: Record<string, any> = {};
+      for (const [k, v] of Object.entries(fields)) {
+        parsed[k] = parseFirestoreValue(v);
+      }
+      return parsed;
+    }
+    if (res.status === 404) {
+      return null;
+    }
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(
+        `Acesso negado ao buscar "${docName}" no Firestore (HTTP ${res.status}). Verifique FIREBASE_SERVICE_ACCOUNT na Vercel.`
+      );
+    }
     throw new Error(`Falha ao buscar documento no Firestore (${res.status} ${res.statusText})`);
+  };
+
+  let parsed = await fetchDoc(targetDoc);
+
+  if (
+    (!parsed || !Array.isArray(parsed.courses) || parsed.courses.length === 0) &&
+    targetDoc !== DEFAULT_DASHBOARD_ID
+  ) {
+    try {
+      const principalData = await fetchDoc(DEFAULT_DASHBOARD_ID);
+      if (principalData) {
+        parsed = { ...principalData, ...parsed };
+      }
+    } catch {
+      // ignora erro no fallback secundário
+    }
   }
 
-  const rawDoc = await res.json();
-  const fields = rawDoc.fields || {};
-  const parsed: any = {};
-  for (const [k, v] of Object.entries(fields)) {
-    parsed[k] = parseFirestoreValue(v);
-  }
+  const safeData = parsed || {};
 
   return {
-    courses: Array.isArray(parsed.courses) ? parsed.courses : [],
-    tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
-    topics: Array.isArray(parsed.topics) ? parsed.topics : [],
-    userEmail: parsed.userEmail || parsed.email,
+    courses: Array.isArray(safeData.courses) ? safeData.courses : [],
+    tasks: Array.isArray(safeData.tasks) ? safeData.tasks : [],
+    topics: Array.isArray(safeData.topics) ? safeData.topics : [],
+    personalBills: Array.isArray(safeData.personalBills) ? safeData.personalBills : [],
+    personalAppointments: Array.isArray(safeData.personalAppointments)
+      ? safeData.personalAppointments
+      : [],
+    userEmail: safeData.userEmail || safeData.email,
+    targetDoc,
+    firestoreMode: accessToken ? 'service-account-oauth2' : 'rest-fallback',
   };
 }
-    courses: parsed.courses || [],
-    tasks: parsed.tasks || [],
-    topics: parsed.topics || [],
-  };
-}
+
+const getLocalDateStr = (daysOffset = 0): string => {
+  const d = new Date(Date.now() + daysOffset * 86400000);
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+};
 
 function formatDateBR(dateStr?: string | null): string {
   if (!dateStr) return '';
@@ -101,71 +381,127 @@ function formatDateBR(dateStr?: string | null): string {
   return String(dateStr);
 }
 
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Permite GET para Vercel Cron ou POST para disparo manual
+  // Permite GET para Vercel Cron / preview ou POST para disparo manual
   if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ error: 'Método não permitido' });
   }
 
   try {
-    const now = new Date();
-    // Horário de Brasília / São Paulo (UTC-3)
-    const brDate = new Date(now.getTime() - 3 * 3600000);
-    const todayStr = brDate.toISOString().split('T')[0];
+    let body: any = req.body;
+    if (typeof body === 'string') {
+      try {
+        body = JSON.parse(body);
+      } catch {
+        body = {};
+      }
+    }
+    body = body || {};
 
-    const in7Days = new Date(brDate.getTime() + 7 * 86400000);
-    const in7DaysStr = in7Days.toISOString().split('T')[0];
+    const todayStr = getLocalDateStr(0);
+    const in7DaysStr = getLocalDateStr(7);
+    const in14DaysStr = getLocalDateStr(14);
+    const headerDateBR = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }).format(new Date());
 
     const requestedUserId =
-      (req.query.userId as string) ||
-      (req.query.uid as string) ||
-      (req.body && req.body.userId) ||
-      DEFAULT_DASHBOARD_ID;
+      (req.query?.userId as string) ||
+      (req.query?.uid as string) ||
+      (typeof body.userId === 'string' ? body.userId : '') ||
+      undefined;
 
-    const { courses, tasks, topics, userEmail } = await fetchDashboardData(requestedUserId);
+    const {
+      courses,
+      tasks,
+      topics,
+      personalBills,
+      userEmail,
+      targetDoc,
+      firestoreMode,
+    } = await fetchDashboardData(requestedUserId);
 
-    const recipientEmail =
-      (req.query.email as string) ||
-      (req.body && req.body.email) ||
-      userEmail ||
-      TARGET_EMAIL;
+    const targetEmail =
+      process.env.NOTIFICATION_EMAIL?.trim() || 'nicolasplcoelho@gmail.com';
+
+    const recipientEmail = String(
+      (req.query?.email as string) || body.email || userEmail || targetEmail
+    ).trim();
 
     // Permite obter a chave do Resend via:
     // 1. Variável de ambiente Vercel (RESEND_API_KEY)
-    // 2. Query string ou Header
-    // 3. Body da requisição (do modal do site)
-    const apiKey =
+    // 2. Header x-resend-api-key
+    // 3. Body da requisição (modal) ou query string
+    const apiKey = String(
       process.env.RESEND_API_KEY ||
-      (req.headers['x-resend-api-key'] as string) ||
-      (req.query?.apiKey as string) ||
-      (req.body && req.body.resendApiKey);
+        (req.headers['x-resend-api-key'] as string) ||
+        body.resendApiKey ||
+        (req.query?.apiKey as string) ||
+        ''
+    ).trim();
 
-    // 1. Filtrar tarefas atrasadas ou para hoje
+    const fromEmail = (
+      process.env.RESEND_FROM_EMAIL || 'Painel do Estudante <onboarding@resend.dev>'
+    ).trim();
+
+    const isPreviewOnly =
+      req.query?.preview === 'true' ||
+      req.query?.dryRun === 'true' ||
+      body.preview === true;
+
+    // 1. Tarefas atrasadas ou para hoje
     const dueTodayOrOverdue = tasks.filter(
       (t) => t.status !== 'done' && t.dueDate && t.dueDate <= todayStr
     );
 
     // 2. Tarefas dos próximos 7 dias
-    const upcomingTasks = tasks.filter(
-      (t) => t.status !== 'done' && t.dueDate && t.dueDate > todayStr && t.dueDate <= in7DaysStr
-    );
+    const upcomingTasks = tasks
+      .filter((t) => t.status !== 'done' && t.dueDate && t.dueDate > todayStr && t.dueDate <= in7DaysStr)
+      .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 
     // 3. Provas nos próximos 14 dias
-    const in14Days = new Date(brDate.getTime() + 14 * 86400000).toISOString().split('T')[0];
-    const upcomingExams = courses.flatMap((c) =>
-      (c.grades || [])
-        .filter((g) => g.date && g.date >= todayStr && g.date <= in14Days)
-        .map((g) => ({
-          course: c,
-          exam: g,
-          date: g.date!,
-        }))
-    ).sort((a, b) => a.date.localeCompare(b.date));
+    const upcomingExams = courses
+      .flatMap((c) =>
+        (c.grades || [])
+          .filter((g) => g.date && g.date >= todayStr && g.date <= in14DaysStr)
+          .map((g) => ({
+            course: c,
+            exam: g,
+            date: g.date!,
+          }))
+      )
+      .sort((a, b) => a.date.localeCompare(b.date));
 
     // 4. Revisões de hoje (Active Recall)
     const dueReviews = topics.filter((top) => top.nextReviewDate && top.nextReviewDate <= todayStr);
 
-    const totalPendencias = dueTodayOrOverdue.length + dueReviews.length;
+    // 5. Contas a pagar vencendo hoje ou atrasadas
+    const dueBills = personalBills
+      .filter((b) => b.status !== 'paid' && b.dueDate && b.dueDate <= todayStr)
+      .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+
+    const totalPendencias = dueTodayOrOverdue.length + dueReviews.length + dueBills.length;
+
+    const pendenciasSummary = {
+      tarefasUrgentes: dueTodayOrOverdue.length,
+      tarefasProximos7Dias: upcomingTasks.length,
+      provasProximas: upcomingExams.length,
+      revisoesHoje: dueReviews.length,
+      contasPendentesHojeOuAtrasadas: dueBills.length,
+    };
 
     // Gerar HTML do E-mail (Estilo Notion / Modern Clean)
     const emailHtml = `
@@ -187,8 +523,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .item-meta { font-size: 12px; color: #64748b; }
     .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; margin-right: 6px; }
     .badge-urgent { background: #fee2e2; color: #b91c1c; }
+    .badge-upcoming { background: #fef3c7; color: #b45309; }
     .badge-exam { background: #dbeafe; color: #1d4ed8; }
     .badge-review { background: #f3e8ff; color: #7e22ce; }
+    .badge-bill { background: #ffe4e6; color: #be123c; }
     .btn { display: inline-block; background: #2563eb; color: #ffffff !important; padding: 12px 24px; border-radius: 8px; font-size: 13px; font-weight: 600; text-decoration: none; margin-top: 10px; }
     .footer { padding: 16px 24px; background: #faf9f6; border-top: 1px solid #f0f0ee; text-align: center; font-size: 11px; color: #94a3b8; }
   </style>
@@ -197,54 +535,116 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   <div class="container">
     <div class="header">
       <h1>📚 Resumo Diário do Estudante</h1>
-      <p>${brDate.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} • ${totalPendencias} pendência(s) prioritária(s)</p>
+      <p>${escapeHtml(headerDateBR)} • ${totalPendencias} pendência(s) prioritária(s)</p>
     </div>
 
     <div class="content">
       <!-- TAREFAS DE HOJE OU ATRASADAS -->
       <div class="section">
         <div class="section-title">🚨 Prazos para Hoje / Atrasadas (${dueTodayOrOverdue.length})</div>
-        ${dueTodayOrOverdue.length > 0 ? dueTodayOrOverdue.map(t => {
-          const c = courses.find(course => course.id === t.courseId);
-          return `
+        ${
+          dueTodayOrOverdue.length > 0
+            ? dueTodayOrOverdue
+                .map((t) => {
+                  const c = courses.find((course) => course.id === t.courseId);
+                  return `
           <div class="item-card">
             <div class="item-title">
               <span class="badge badge-urgent">${t.dueDate < todayStr ? 'Atrasada' : 'Hoje'}</span>
-              ${t.name}
+              ${escapeHtml(t.name)}
             </div>
-            <div class="item-meta">Disciplina: <b>${c ? c.code : 'Geral'}</b> • Entrega: ${formatDateBR(t.dueDate)}</div>
+            <div class="item-meta">Disciplina: <b>${escapeHtml(c ? c.code : 'Geral')}</b> • Entrega: ${escapeHtml(formatDateBR(t.dueDate))}</div>
           </div>`;
-        }).join('') : '<p style="font-size: 13px; color: #64748b; margin: 0;">🎉 Nenhuma tarefa atrasada ou para hoje!</p>'}
+                })
+                .join('')
+            : '<p style="font-size: 13px; color: #64748b; margin: 0;">🎉 Nenhuma tarefa atrasada ou para hoje!</p>'
+        }
+      </div>
+
+      <!-- PRÓXIMOS 7 DIAS -->
+      <div class="section">
+        <div class="section-title">📅 Próximas Tarefas (7 dias) (${upcomingTasks.length})</div>
+        ${
+          upcomingTasks.length > 0
+            ? upcomingTasks
+                .map((t) => {
+                  const c = courses.find((course) => course.id === t.courseId);
+                  return `
+          <div class="item-card">
+            <div class="item-title">
+              <span class="badge badge-upcoming">${escapeHtml(c ? c.code : 'Geral')}</span>
+              ${escapeHtml(t.name)}
+            </div>
+            <div class="item-meta">Tipo: ${escapeHtml(t.type)} • Entrega: <b>${escapeHtml(formatDateBR(t.dueDate))}</b></div>
+          </div>`;
+                })
+                .join('')
+            : '<p style="font-size: 13px; color: #64748b; margin: 0;">Nenhuma tarefa prevista para os próximos 7 dias.</p>'
+        }
       </div>
 
       <!-- PROVAS PRÓXIMAS -->
       <div class="section">
         <div class="section-title">📝 Provas nos Próximos 14 Dias (${upcomingExams.length})</div>
-        ${upcomingExams.length > 0 ? upcomingExams.map(ex => `
-          <div class="item-card" style="border-left: 4px solid ${ex.course.color};">
+        ${
+          upcomingExams.length > 0
+            ? upcomingExams
+                .map(
+                  (ex) => `
+          <div class="item-card" style="border-left: 4px solid ${escapeHtml(ex.course.color || '#2563eb')};">
             <div class="item-title">
-              <span class="badge badge-exam">${ex.course.code}</span>
-              ${ex.exam.name}
+              <span class="badge badge-exam">${escapeHtml(ex.course.code)}</span>
+              ${escapeHtml(ex.exam.name)}
             </div>
-            <div class="item-meta">Data da Prova: <b>${formatDateBR(ex.date)}</b> • ${ex.course.name}</div>
-          </div>
-        `).join('') : '<p style="font-size: 13px; color: #64748b; margin: 0;">Nenhuma prova agendada para os próximos 14 dias.</p>'}
+            <div class="item-meta">Data da Prova: <b>${escapeHtml(formatDateBR(ex.date))}</b> • ${escapeHtml(ex.course.name)}</div>
+          </div>`
+                )
+                .join('')
+            : '<p style="font-size: 13px; color: #64748b; margin: 0;">Nenhuma prova agendada para os próximos 14 dias.</p>'
+        }
       </div>
 
       <!-- REVISÕES ESPAÇADAS (ACTIVE RECALL) -->
       <div class="section">
         <div class="section-title">🧠 Revisões Espaçadas de Hoje (${dueReviews.length})</div>
-        ${dueReviews.length > 0 ? dueReviews.map(r => {
-          const c = courses.find(course => course.id === r.courseId);
-          return `
+        ${
+          dueReviews.length > 0
+            ? dueReviews
+                .map((r) => {
+                  const c = courses.find((course) => course.id === r.courseId);
+                  return `
           <div class="item-card">
             <div class="item-title">
               <span class="badge badge-review">Revisar</span>
-              ${r.name}
+              ${escapeHtml(r.name)}
             </div>
-            <div class="item-meta">${c ? c.code : 'Geral'} • Próxima revisão agendada para hoje</div>
+            <div class="item-meta">${escapeHtml(c ? c.code : 'Geral')} • Revisão pendente (${escapeHtml(formatDateBR(r.nextReviewDate))})</div>
           </div>`;
-        }).join('') : '<p style="font-size: 13px; color: #64748b; margin: 0;">Nenhuma revisão de tópicos pendente para hoje.</p>'}
+                })
+                .join('')
+            : '<p style="font-size: 13px; color: #64748b; margin: 0;">Nenhuma revisão de tópicos pendente para hoje.</p>'
+        }
+      </div>
+
+      <!-- CONTAS A PAGAR HOJE OU ATRASADAS -->
+      <div class="section">
+        <div class="section-title">💳 Contas a Pagar Hoje / Atrasadas (${dueBills.length})</div>
+        ${
+          dueBills.length > 0
+            ? dueBills
+                .map(
+                  (b) => `
+          <div class="item-card">
+            <div class="item-title">
+              <span class="badge badge-bill">${b.dueDate < todayStr ? 'Atrasada' : 'Vence Hoje'}</span>
+              ${escapeHtml(b.title)}
+            </div>
+            <div class="item-meta">Valor: <b>R$ ${Number(b.amount || 0).toFixed(2)}</b> • Vencimento: ${escapeHtml(formatDateBR(b.dueDate))}</div>
+          </div>`
+                )
+                .join('')
+            : '<p style="font-size: 13px; color: #64748b; margin: 0;">Nenhuma conta vencendo hoje ou em atraso.</p>'
+        }
       </div>
 
       <div style="text-align: center; margin-top: 30px;">
@@ -260,47 +660,67 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 </html>
     `;
 
-    // Se a chave do Resend estiver configurada, faz o envio real
-    if (apiKey) {
-      const resend = new Resend(apiKey);
-      const emailResult = await resend.emails.send({
-        from: 'Painel do Estudante <onboarding@resend.dev>',
-        to: recipientEmail,
-        subject: `📚 [Painel do Estudante] Resumo de Hoje: ${totalPendencias} pendência(s)`,
-        html: emailHtml,
+    // Envia via API REST oficial do Resend quando a chave está presente e não é preview
+    if (apiKey && !isPreviewOnly) {
+      const resendRes = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: fromEmail,
+          to: [recipientEmail],
+          subject: `📚 [Painel do Estudante] Resumo de Hoje: ${totalPendencias} pendência(s)`,
+          html: emailHtml,
+        }),
       });
 
-      if (emailResult.error) {
-        return res.status(400).json({
+      const rawText = await resendRes.text();
+      let resendJson: any = null;
+      try {
+        resendJson = JSON.parse(rawText);
+      } catch {
+        // mantém rawText
+      }
+
+      if (!resendRes.ok) {
+        const errMsg = resendJson?.message || resendJson?.name || rawText || resendRes.statusText;
+        return res.status(resendRes.status >= 400 ? resendRes.status : 400).json({
           success: false,
-          error: `Erro do Resend: ${emailResult.error.message}`,
+          error: `Erro do Resend (${resendRes.status}): ${errMsg}`,
+          resendConfigured: true,
+          targetEmail: recipientEmail,
+          targetDoc,
+          firestoreMode,
         });
       }
 
       return res.status(200).json({
         success: true,
+        mode: 'sent',
         message: `E-mail diário enviado com sucesso para ${recipientEmail}!`,
-        id: emailResult.data?.id,
+        id: resendJson?.id,
+        resendConfigured: true,
         targetEmail: recipientEmail,
-        pendencias: {
-          tarefasUrgentes: dueTodayOrOverdue.length,
-          provasProximas: upcomingExams.length,
-          revisoesHoje: dueReviews.length,
-        },
+        targetDoc,
+        firestoreMode,
+        pendencias: pendenciasSummary,
       });
     }
 
-    // Caso o RESEND_API_KEY ainda não tenha sido adicionado no Vercel Dashboard
+    // Modo preview (quando ?preview=true ou RESEND_API_KEY ausente)
     return res.status(200).json({
       success: true,
       mode: 'preview',
-      message: 'Resumo gerado com sucesso! Para envio real por e-mail, adicione a variável RESEND_API_KEY no painel da Vercel.',
+      resendConfigured: Boolean(apiKey),
+      firestoreMode,
+      targetDoc,
       targetEmail: recipientEmail,
-      pendencias: {
-        tarefasUrgentes: dueTodayOrOverdue.length,
-        provasProximas: upcomingExams.length,
-        revisoesHoje: dueReviews.length,
-      },
+      message: apiKey
+        ? 'Modo preview: e-mail não enviado (RESEND_API_KEY está configurada).'
+        : 'Modo preview: nenhum e-mail foi enviado porque RESEND_API_KEY não está configurada na Vercel.',
+      pendencias: pendenciasSummary,
       htmlPreview: emailHtml,
     });
   } catch (error: any) {

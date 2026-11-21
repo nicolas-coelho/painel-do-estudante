@@ -57,19 +57,41 @@ export const FirebaseModal: React.FC<FirebaseModalProps> = ({
       if (resendApiKey.trim()) {
         localStorage.setItem('painel_resend_api_key', resendApiKey.trim());
       }
+      const idToken = currentUser ? await currentUser.getIdToken() : null;
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'x-resend-api-key': resendApiKey.trim(),
+      };
+      if (idToken) {
+        headers.Authorization = `Bearer ${idToken}`;
+      }
+
       const res = await fetch('/api/daily-digest', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-resend-api-key': resendApiKey.trim(),
-        },
-        body: JSON.stringify({ resendApiKey: resendApiKey.trim() }),
+        headers,
+        body: JSON.stringify({
+          resendApiKey: resendApiKey.trim(),
+          userId: currentUser?.uid,
+          email: currentUser?.email,
+        }),
       });
       const data = await res.json();
-      if (data.success) {
+      if (data.success && data.mode !== 'preview') {
+        const aiSuffix = data.aiIncluded
+          ? ' + Consultoria IA (Gemini) incluída!'
+          : data.aiError
+          ? ` (Consultoria IA ignorada: ${data.aiError})`
+          : '';
         setStatusMessage({
-          text: data.message || `Resumo gerado com sucesso para ${data.targetEmail}!`,
+          text: `${data.message || `E-mail enviado com sucesso para ${data.targetEmail}!`}${aiSuffix}`,
           type: 'success',
+        });
+      } else if (data.mode === 'preview') {
+        setStatusMessage({
+          text:
+            data.message ||
+            'Modo preview: nenhum e-mail foi enviado porque falta configurar a chave RESEND_API_KEY.',
+          type: 'error',
         });
       } else {
         setStatusMessage({
@@ -269,7 +291,7 @@ export const FirebaseModal: React.FC<FirebaseModalProps> = ({
           </div>
 
           <p className="text-[11px] text-[#787774] dark:text-[#9b9a97] leading-relaxed">
-            Uma automação na Vercel verifica suas tarefas atrasadas, provas próximas e revisões do dia e envia um relatório consolidado para <b>nicolasplcoelho@gmail.com</b>.
+            Uma automação na Vercel verifica suas atividades, contas pessoais, compromissos, provas próximas e revisões do dia, e envia um relatório consolidado para <b>{currentUser?.email || 'nicolasplcoelho@gmail.com'}</b> — incluindo a <b>Consultoria IA (Gemini)</b> quando <code className="font-mono">GEMINI_API_KEY</code> estiver configurada na Vercel.
           </p>
 
           <div className="space-y-1 pt-1">
