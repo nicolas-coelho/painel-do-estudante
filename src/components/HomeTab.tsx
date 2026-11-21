@@ -1,9 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { Course, Task, TaskStatus, TaskType, PersonalBill, PersonalAppointment } from '../types';
+import { User } from 'firebase/auth';
+import {
+  Course,
+  Task,
+  TaskStatus,
+  TaskType,
+  PriorityLevel,
+  StudyTopic,
+  StudySession,
+  PersonalBill,
+  PersonalAppointment,
+} from '../types';
 import { useNotification } from '../context/NotificationContext';
 import { formatDateBR, parseDateToISO } from '../dateUtils';
 import { getClassesForDayOfWeek, getEventDateStr, getEventTimeStr } from '../calendarUtils';
 import { getSavedCalendarToken, fetchGoogleCalendarEvents, GoogleCalendarEvent } from '../googleCalendar';
+import { applyTaskPriority, getQuadrantConfig, getTaskQuadrant } from '../priorityUtils';
+import { AiAdvisorCard } from './AiAdvisorCard';
+import { PriorityMatrix } from './PriorityMatrix';
+import { TaskPriorityFields } from './TaskPriorityFields';
 import {
   Calendar as CalendarIcon,
   CheckCircle2,
@@ -33,10 +48,13 @@ import {
 interface HomeTabProps {
   courses: Course[];
   tasks: Task[];
+  topics?: StudyTopic[];
+  sessions?: StudySession[];
   darkMode: boolean;
   calendarId?: string;
   personalBills?: PersonalBill[];
   personalAppointments?: PersonalAppointment[];
+  firebaseUser?: User | null;
   onAddTask: (task: Task) => void;
   onUpdateTask: (task: Task) => void;
   onDeleteTask: (id: string) => void;
@@ -55,10 +73,13 @@ const getLocalDateStr = (d = new Date()) => {
 export const HomeTab: React.FC<HomeTabProps> = ({
   courses,
   tasks,
+  topics = [],
+  sessions = [],
   darkMode,
   calendarId: propCalendarId,
   personalBills = [],
   personalAppointments = [],
+  firebaseUser = null,
   onAddTask,
   onUpdateTask,
   onDeleteTask,
@@ -76,6 +97,8 @@ export const HomeTab: React.FC<HomeTabProps> = ({
   const [taskType, setTaskType] = useState<TaskType>('Trabalho');
   const [taskDueDate, setTaskDueDate] = useState(todayStr);
   const [taskNotes, setTaskNotes] = useState('');
+  const [taskUrgency, setTaskUrgency] = useState<PriorityLevel | ''>('');
+  const [taskImportance, setTaskImportance] = useState<PriorityLevel | ''>('');
 
   // Course filter for the task board
   const [selectedCourseFilter, setSelectedCourseFilter] = useState<string>('all');
@@ -146,7 +169,12 @@ export const HomeTab: React.FC<HomeTabProps> = ({
     { id: 'done', label: 'Concluído', badgeColor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400' },
   ];
 
-  const handleOpenCreateTask = (initialStatus: TaskStatus = 'todo', defaultDate: string = todayStr) => {
+  const handleOpenCreateTask = (
+    initialStatus: TaskStatus = 'todo',
+    defaultDate: string = todayStr,
+    initialUrgency: PriorityLevel | '' = '',
+    initialImportance: PriorityLevel | '' = ''
+  ) => {
     setEditingTask(null);
     setTaskName('');
     setTaskCourseId(visibleCourses[0]?.id || courses[0]?.id || '');
@@ -154,6 +182,8 @@ export const HomeTab: React.FC<HomeTabProps> = ({
     setTaskType('Trabalho');
     setTaskDueDate(defaultDate);
     setTaskNotes('');
+    setTaskUrgency(initialUrgency);
+    setTaskImportance(initialImportance);
     setIsTaskModalOpen(true);
   };
 
@@ -165,6 +195,8 @@ export const HomeTab: React.FC<HomeTabProps> = ({
     setTaskType(task.type);
     setTaskDueDate(parseDateToISO(task.dueDate) || task.dueDate || todayStr);
     setTaskNotes(task.notes || '');
+    setTaskUrgency(task.urgency || '');
+    setTaskImportance(task.importance || '');
     setIsTaskModalOpen(true);
   };
 
@@ -173,27 +205,35 @@ export const HomeTab: React.FC<HomeTabProps> = ({
     if (!taskName.trim()) return;
 
     if (editingTask) {
-      const updated: Task = {
-        ...editingTask,
-        name: taskName.trim(),
-        courseId: taskCourseId || visibleCourses[0]?.id || courses[0]?.id || '',
-        status: taskStatus,
-        type: taskType,
-        dueDate: taskDueDate || editingTask.dueDate,
-        notes: taskNotes.trim(),
-      };
+      const updated: Task = applyTaskPriority(
+        {
+          ...editingTask,
+          name: taskName.trim(),
+          courseId: taskCourseId || visibleCourses[0]?.id || courses[0]?.id || '',
+          status: taskStatus,
+          type: taskType,
+          dueDate: taskDueDate || editingTask.dueDate,
+          notes: taskNotes.trim(),
+        },
+        taskUrgency,
+        taskImportance
+      );
       onUpdateTask(updated);
       showToast('success', 'Atividade Atualizada', `"${taskName.trim()}" foi atualizada com sucesso.`);
     } else {
-      const newTask: Task = {
-        id: `task-${Date.now()}`,
-        name: taskName.trim(),
-        courseId: taskCourseId || visibleCourses[0]?.id || courses[0]?.id || '',
-        status: taskStatus,
-        type: taskType,
-        dueDate: taskDueDate || todayStr,
-        notes: taskNotes.trim(),
-      };
+      const newTask: Task = applyTaskPriority(
+        {
+          id: `task-${Date.now()}`,
+          name: taskName.trim(),
+          courseId: taskCourseId || visibleCourses[0]?.id || courses[0]?.id || '',
+          status: taskStatus,
+          type: taskType,
+          dueDate: taskDueDate || todayStr,
+          notes: taskNotes.trim(),
+        },
+        taskUrgency,
+        taskImportance
+      );
       onAddTask(newTask);
       showToast('success', 'Atividade Criada', `"${taskName.trim()}" foi adicionada.`);
     }
@@ -202,6 +242,8 @@ export const HomeTab: React.FC<HomeTabProps> = ({
     setEditingTask(null);
     setTaskName('');
     setTaskNotes('');
+    setTaskUrgency('');
+    setTaskImportance('');
   };
 
   const getTypeBadge = (t: TaskType) => {
@@ -325,6 +367,20 @@ export const HomeTab: React.FC<HomeTabProps> = ({
   return (
     <div className="space-y-8 animate-fadeIn">
       {/* ======================================================== */}
+      {/* 0. CONSULTORIA IA COMPACTA (GEMINI)                      */}
+      {/* ======================================================== */}
+      <AiAdvisorCard
+        courses={courses}
+        tasks={tasks}
+        topics={topics}
+        sessions={sessions}
+        personalBills={personalBills}
+        personalAppointments={personalAppointments}
+        firebaseUser={firebaseUser}
+        onNavigateTab={onNavigateTab}
+      />
+
+      {/* ======================================================== */}
       {/* 1. TOPO: PRINCIPAIS ENTREGAS DO DIA                      */}
       {/* ======================================================== */}
       <section className="space-y-4">
@@ -420,6 +476,8 @@ export const HomeTab: React.FC<HomeTabProps> = ({
             {todayDeliveries.map((task) => {
               const course = courses.find((c) => c.id === task.courseId);
               const isDone = task.status === 'done';
+              const quadrant = getTaskQuadrant(task);
+              const quadrantCfg = quadrant ? getQuadrantConfig(quadrant) : null;
 
               return (
                 <div
@@ -442,6 +500,11 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                             style={{ backgroundColor: `${course.color}18`, color: course.color }}
                           >
                             {course.code}
+                          </span>
+                        )}
+                        {quadrantCfg && (
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${quadrantCfg.badgeClass}`}>
+                            {quadrantCfg.shortLabel}
                           </span>
                         )}
                       </div>
@@ -549,7 +612,18 @@ export const HomeTab: React.FC<HomeTabProps> = ({
       </section>
 
       {/* ======================================================== */}
-      {/* 2. MEIO: QUADROS DE TAREFAS DESSAS ATIVIDADES             */}
+      {/* 2. MATRIZ DE PRIORIZAÇÃO (EISENHOWER)                    */}
+      {/* ======================================================== */}
+      <PriorityMatrix
+        tasks={tasks}
+        courses={courses}
+        onUpdateTask={onUpdateTask}
+        onEditTask={handleOpenEditTask}
+        onCreateTaskInQuadrant={(u, i) => handleOpenCreateTask('todo', todayStr, u, i)}
+      />
+
+      {/* ======================================================== */}
+      {/* 3. MEIO: QUADROS DE TAREFAS DESSAS ATIVIDADES             */}
       {/* ======================================================== */}
       <section className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -663,6 +737,8 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                     const isLate = task.status !== 'done' && Boolean(taskIso) && new Date(taskIso) < new Date(new Date().setHours(0,0,0,0));
                     const isDueToday = taskIso ? taskIso === todayStr : task.dueDate === todayStr;
                     const isDragging = draggedTaskId === task.id;
+                    const quadrant = getTaskQuadrant(task);
+                    const quadrantCfg = quadrant ? getQuadrantConfig(quadrant) : null;
 
                     return (
                       <div
@@ -687,6 +763,11 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                                 style={{ backgroundColor: `${course.color}18`, color: course.color }}
                               >
                                 {course.code}
+                              </span>
+                            )}
+                            {quadrantCfg && (
+                              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${quadrantCfg.badgeClass}`}>
+                                {quadrantCfg.shortLabel}
                               </span>
                             )}
                           </div>
@@ -1315,7 +1396,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
       {/* ======================================================== */}
       {isTaskModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#202020] rounded-2xl border border-[#e9e9e8] dark:border-[#2f2f2f] w-full max-w-md shadow-2xl p-6">
+          <div className="bg-white dark:bg-[#202020] rounded-2xl border border-[#e9e9e8] dark:border-[#2f2f2f] w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-base text-[#37352f] dark:text-[#f3f3f2] flex items-center gap-2">
                 {editingTask ? (
@@ -1420,6 +1501,13 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                   />
                 </div>
               </div>
+
+              <TaskPriorityFields
+                urgency={taskUrgency}
+                importance={taskImportance}
+                onChangeUrgency={setTaskUrgency}
+                onChangeImportance={setTaskImportance}
+              />
 
               <div>
                 <label className="block text-[#787774] dark:text-[#9b9a97] mb-1 font-medium text-xs">

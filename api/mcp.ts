@@ -446,6 +446,15 @@ function formatDateBR(dateStr?: string | null): string {
   return String(dateStr);
 }
 
+function getEisenhowerLabel(urgency?: string, importance?: string): string | null {
+  if (urgency !== 'high' && urgency !== 'low') return null;
+  if (importance !== 'high' && importance !== 'low') return null;
+  if (urgency === 'high' && importance === 'high') return '[Q1 - Fazer Agora]';
+  if (urgency === 'low' && importance === 'high') return '[Q2 - Agendar]';
+  if (urgency === 'high' && importance === 'low') return '[Q3 - Rápido]';
+  return '[Q4 - Depois]';
+}
+
 // ============================================================================
 // DEFINIÇÃO DAS FERRAMENTAS MCP (TOOLS)
 // ============================================================================
@@ -497,6 +506,16 @@ const MCP_TOOLS = [
         notes: {
           type: 'string',
           description: 'Instruções adicionais, requisitos, links ou anotações sobre a entrega.',
+        },
+        urgency: {
+          type: 'string',
+          enum: ['high', 'low'],
+          description: 'Urgência para a Matriz de Eisenhower: "high" (Urgente) ou "low" (Não Urgente).',
+        },
+        importance: {
+          type: 'string',
+          enum: ['high', 'low'],
+          description: 'Importância para a Matriz de Eisenhower: "high" (Importante) ou "low" (Não Importante).',
         },
         userId: {
           type: 'string',
@@ -1050,7 +1069,8 @@ async function executeTool(name: string, args: any): Promise<string> {
     if (todayTasks.length > 0) {
       todayTasks.forEach((t) => {
         const course = courses.find((c) => c.id === t.courseId);
-        output += `- [${t.status === 'done' ? 'X' : ' '}] **${t.name}** (${course ? course.code : 'Geral'}) - Tipo: ${t.type} | Status: ${t.status}\n`;
+        const priorityLabel = getEisenhowerLabel(t.urgency, t.importance);
+        output += `- [${t.status === 'done' ? 'X' : ' '}] **${t.name}** (${course ? course.code : 'Geral'}) - Tipo: ${t.type} | Status: ${t.status}${priorityLabel ? ` | Prioridade: ${priorityLabel}` : ''}\n`;
         if (t.notes) output += `  *Nota: ${t.notes}*\n`;
       });
     } else {
@@ -1063,15 +1083,20 @@ async function executeTool(name: string, args: any): Promise<string> {
       output += `## ⚠️ Tarefas Atrasadas (${overdueTasks.length})\n`;
       overdueTasks.forEach((t) => {
         const course = courses.find((c) => c.id === t.courseId);
-        output += `- ❗ **${t.name}** (${course ? course.code : 'Geral'}) - Prazo original: ${formatDateBR(t.dueDate)}\n`;
+        const priorityLabel = getEisenhowerLabel(t.urgency, t.importance);
+        output += `- ❗ **${t.name}** (${course ? course.code : 'Geral'})${priorityLabel ? ` ${priorityLabel}` : ''} - Prazo original: ${formatDateBR(t.dueDate)}\n`;
       });
       output += `\n`;
     }
 
     // 3. Quadro de Atividades Atuais
+    const formatTaskSummary = (t: any) => {
+      const priorityLabel = getEisenhowerLabel(t.urgency, t.importance);
+      return priorityLabel ? `${t.name} ${priorityLabel}` : t.name;
+    };
     output += `## 📊 Quadro de Tarefas\n`;
-    output += `- **Em Andamento (${inProgressTasks.length}):** ${inProgressTasks.map((t) => t.name).join(', ') || 'Nenhuma'}\n`;
-    output += `- **A Fazer (${todoTasks.length}):** ${todoTasks.slice(0, 5).map((t) => t.name).join(', ') || 'Nenhuma'}\n\n`;
+    output += `- **Em Andamento (${inProgressTasks.length}):** ${inProgressTasks.map(formatTaskSummary).join(', ') || 'Nenhuma'}\n`;
+    output += `- **A Fazer (${todoTasks.length}):** ${todoTasks.slice(0, 5).map(formatTaskSummary).join(', ') || 'Nenhuma'}\n\n`;
 
     // 4. Próximas Provas
     output += `## 📝 Próximas Provas Agendadas\n`;
@@ -1177,7 +1202,12 @@ async function executeTool(name: string, args: any): Promise<string> {
         dueDate = getLocalDateStr(1);
       }
 
-      const newTask = {
+      const rawUrgency = cardItem.urgency ?? args.urgency;
+      const rawImportance = cardItem.importance ?? args.importance;
+      const urgency = rawUrgency === 'high' || rawUrgency === 'low' ? rawUrgency : undefined;
+      const importance = rawImportance === 'high' || rawImportance === 'low' ? rawImportance : undefined;
+
+      const newTask: Record<string, any> = {
         id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
         name: cardName,
         courseId,
@@ -1187,6 +1217,8 @@ async function executeTool(name: string, args: any): Promise<string> {
         notes: cardItem.notes ? String(cardItem.notes).trim() : '',
         subtasks: Array.isArray(cardItem.subtasks) ? cardItem.subtasks : [],
       };
+      if (urgency) newTask.urgency = urgency;
+      if (importance) newTask.importance = importance;
 
       newTasksList.push(newTask);
       createdList.push({ task: newTask, course: matchedCourse });
@@ -1196,6 +1228,7 @@ async function executeTool(name: string, args: any): Promise<string> {
 
     if (createdList.length === 1) {
       const { task: newTask, course: matchedCourse } = createdList[0];
+      const priorityLabel = getEisenhowerLabel(newTask.urgency, newTask.importance);
       return `✅ **Card Criado com Sucesso no Painel do Estudante!**
 
 - **Título:** ${newTask.name}
@@ -1203,12 +1236,15 @@ async function executeTool(name: string, args: any): Promise<string> {
 - **Tipo:** ${newTask.type}
 - **Status Inicial:** ${newTask.status === 'todo' ? 'A Fazer' : newTask.status === 'in_progress' ? 'Em Andamento' : 'Concluído'}
 - **Data de Entrega:** ${formatDateBR(newTask.dueDate)}
-${newTask.notes ? `- **Anotações:** ${newTask.notes}\n` : ''}
+${priorityLabel ? `- **Prioridade (Eisenhower):** ${priorityLabel}\n` : ''}${newTask.notes ? `- **Anotações:** ${newTask.notes}\n` : ''}
 *O card já foi sincronizado e aparece na Página Inicial e no Quadro de Tarefas.*`;
     }
 
     return `✅ **${createdList.length} Cards Criados com Sucesso no Painel do Estudante!**\n\n` +
-      createdList.map(c => `- **${c.task.name}** [${c.course?.code || 'Geral'}] — Entrega: ${formatDateBR(c.task.dueDate)} (${c.task.status})`).join('\n') +
+      createdList.map(c => {
+        const priorityLabel = getEisenhowerLabel(c.task.urgency, c.task.importance);
+        return `- **${c.task.name}** [${c.course?.code || 'Geral'}] — Entrega: ${formatDateBR(c.task.dueDate)} (${c.task.status})${priorityLabel ? ` ${priorityLabel}` : ''}`;
+      }).join('\n') +
       `\n\n*Todos os cards foram persistidos no Firestore.*`;
   }
 

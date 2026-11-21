@@ -95,6 +95,8 @@ export const initialTasks: Task[] = [
     type: 'Trabalho',
     dueDate: tomorrow,
     notes: 'Entregar relatório com testes unitários em Java.',
+    urgency: 'low',
+    importance: 'high',
   },
   {
     id: 'task-2',
@@ -104,6 +106,8 @@ export const initialTasks: Task[] = [
     type: 'Exercício',
     dueDate: inThreeDays,
     notes: 'Capítulo 4 do livro do Sommerville.',
+    urgency: 'high',
+    importance: 'low',
   },
   {
     id: 'task-3',
@@ -113,6 +117,8 @@ export const initialTasks: Task[] = [
     type: 'Exercício',
     dueDate: today,
     notes: 'Resolver exercícios ímpares da seção 3.5.',
+    urgency: 'high',
+    importance: 'high',
   },
   {
     id: 'task-4',
@@ -122,6 +128,8 @@ export const initialTasks: Task[] = [
     type: 'Prova',
     dueDate: '2026-11-01',
     notes: 'Revisados flashcards e exercícios anteriores.',
+    urgency: 'low',
+    importance: 'high',
   },
 ];
 

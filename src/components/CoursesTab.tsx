@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Course, GradeItem, SyllabusItem, Task } from '../types';
 import { useNotification } from '../context/NotificationContext';
 import { formatDateBR } from '../dateUtils';
+import { getQuadrantConfig, getTaskQuadrant } from '../priorityUtils';
 import {
   Plus,
   BookOpen,
@@ -1050,10 +1051,19 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({
                           >
                             <div>
                               <div className="font-medium text-[#37352f] dark:text-[#f3f3f2]">{t.name}</div>
-                              <div className="text-[11px] text-[#787774] dark:text-[#9b9a97] flex items-center gap-2 mt-0.5">
+                              <div className="text-[11px] text-[#787774] dark:text-[#9b9a97] flex items-center gap-2 mt-0.5 flex-wrap">
                                 <span className="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 text-[10px] font-medium">
                                   {t.type}
                                 </span>
+                                {(() => {
+                                  const q = getTaskQuadrant(t);
+                                  const qCfg = q ? getQuadrantConfig(q) : null;
+                                  return qCfg ? (
+                                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${qCfg.badgeClass}`}>
+                                      {qCfg.shortLabel}
+                                    </span>
+                                  ) : null;
+                                })()}
                                 <span>Entrega: {formatDateBR(t.dueDate)}</span>
                               </div>
                             </div>

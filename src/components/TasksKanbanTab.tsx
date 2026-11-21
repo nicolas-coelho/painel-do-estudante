@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { Task, Course, TaskStatus, TaskType } from '../types';
+import { Task, Course, TaskStatus, TaskType, PriorityLevel } from '../types';
 import { useNotification } from '../context/NotificationContext';
 import { formatDateBR, parseDateToISO } from '../dateUtils';
+import { applyTaskPriority, getQuadrantConfig, getTaskQuadrant } from '../priorityUtils';
+import { TaskPriorityFields } from './TaskPriorityFields';
 import { Plus, Calendar, AlertCircle, Trash2, X, GripVertical, Pencil } from 'lucide-react';
 
 interface TasksKanbanTabProps {
@@ -45,6 +47,8 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
   const [type, setType] = useState<TaskType>('Trabalho');
   const [dueDate, setDueDate] = useState('');
   const [notes, setNotes] = useState('');
+  const [urgency, setUrgency] = useState<PriorityLevel | ''>('');
+  const [importance, setImportance] = useState<PriorityLevel | ''>('');
 
   // Mantém o select sincronizado com a primeira disciplina disponível se mudar
   React.useEffect(() => {
@@ -79,6 +83,8 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
     setType('Trabalho');
     setDueDate(new Date().toISOString().split('T')[0]);
     setNotes('');
+    setUrgency('');
+    setImportance('');
     setIsModalOpen(true);
   };
 
@@ -90,6 +96,8 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
     setType(task.type);
     setDueDate(parseDateToISO(task.dueDate) || task.dueDate || '');
     setNotes(task.notes || '');
+    setUrgency(task.urgency || '');
+    setImportance(task.importance || '');
     setIsModalOpen(true);
   };
 
@@ -98,27 +106,35 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
     if (!name.trim()) return;
 
     if (editingTask) {
-      const updated: Task = {
-        ...editingTask,
-        name: name.trim(),
-        courseId: courseId || visibleCourses[0]?.id || courses[0]?.id || '',
-        status,
-        type,
-        dueDate: dueDate || editingTask.dueDate,
-        notes: notes.trim(),
-      };
+      const updated: Task = applyTaskPriority(
+        {
+          ...editingTask,
+          name: name.trim(),
+          courseId: courseId || visibleCourses[0]?.id || courses[0]?.id || '',
+          status,
+          type,
+          dueDate: dueDate || editingTask.dueDate,
+          notes: notes.trim(),
+        },
+        urgency,
+        importance
+      );
       onUpdateTask(updated);
       showToast('success', 'Tarefa Atualizada', `"${name.trim()}" foi atualizada com sucesso.`);
     } else {
-      const newTask: Task = {
-        id: `task-${Date.now()}`,
-        name: name.trim(),
-        courseId: courseId || visibleCourses[0]?.id || courses[0]?.id || '',
-        status,
-        type,
-        dueDate: dueDate || new Date().toISOString().split('T')[0],
-        notes: notes.trim(),
-      };
+      const newTask: Task = applyTaskPriority(
+        {
+          id: `task-${Date.now()}`,
+          name: name.trim(),
+          courseId: courseId || visibleCourses[0]?.id || courses[0]?.id || '',
+          status,
+          type,
+          dueDate: dueDate || new Date().toISOString().split('T')[0],
+          notes: notes.trim(),
+        },
+        urgency,
+        importance
+      );
       onAddTask(newTask);
       showToast('success', 'Tarefa Criada', `"${name.trim()}" foi adicionada.`);
     }
@@ -127,6 +143,8 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
     setEditingTask(null);
     setName('');
     setNotes('');
+    setUrgency('');
+    setImportance('');
   };
 
   const getTypeBadge = (t: TaskType) => {
@@ -292,6 +310,8 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
                   const taskIso = parseDateToISO(task.dueDate);
                   const isLate = task.status !== 'done' && Boolean(taskIso) && new Date(taskIso) < new Date(new Date().setHours(0,0,0,0));
                   const isDragging = draggedTaskId === task.id;
+                  const quadrant = getTaskQuadrant(task);
+                  const quadrantCfg = quadrant ? getQuadrantConfig(quadrant) : null;
 
                   return (
                     <div
@@ -317,6 +337,11 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
                               style={{ backgroundColor: `${course.color}18`, color: course.color }}
                             >
                               {course.code}
+                            </span>
+                          )}
+                          {quadrantCfg && (
+                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${quadrantCfg.badgeClass}`}>
+                              {quadrantCfg.shortLabel}
                             </span>
                           )}
                         </div>
@@ -439,7 +464,7 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
       {/* Modal Add / Edit Task */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#202020] rounded-xl border border-[#e9e9e8] dark:border-[#2f2f2f] w-full max-w-md shadow-2xl p-6">
+          <div className="bg-white dark:bg-[#202020] rounded-xl border border-[#e9e9e8] dark:border-[#2f2f2f] w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-lg flex items-center gap-2">
                 {editingTask ? (
@@ -536,6 +561,13 @@ export const TasksKanbanTab: React.FC<TasksKanbanTabProps> = ({
                   />
                 </div>
               </div>
+
+              <TaskPriorityFields
+                urgency={urgency}
+                importance={importance}
+                onChangeUrgency={setUrgency}
+                onChangeImportance={setImportance}
+              />
 
               <div>
                 <label className="block text-[#787774] dark:text-[#9b9a97] mb-1 font-medium">Anotações / Descrição</label>

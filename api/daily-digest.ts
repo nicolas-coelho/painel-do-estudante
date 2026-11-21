@@ -20,6 +20,8 @@ interface Task {
   status: string;
   type: string;
   dueDate: string;
+  urgency?: string;
+  importance?: string;
 }
 
 interface GradeItem {
@@ -57,7 +59,28 @@ interface PersonalAppointment {
   title: string;
   date: string;
   time?: string;
+  location?: string;
+  category?: string;
   completed?: boolean;
+}
+
+interface AiDigestReport {
+  headline: string;
+  summary: string;
+  topPriorities: {
+    title: string;
+    timeframe: string;
+    category: string;
+    urgency: string;
+    reason: string;
+  }[];
+  reminders: {
+    title: string;
+    dueLabel: string;
+    category: string;
+    detail: string;
+  }[];
+  insight: string;
 }
 
 let lastEnvSignature = '';
@@ -390,6 +413,262 @@ function escapeHtml(value: unknown): string {
     .replace(/'/g, '&#39;');
 }
 
+function addDaysISO(isoDate: string, days: number): string {
+  const match = isoDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return getLocalDateStr(days);
+  const [, y, m, d] = match;
+  const utc = Date.UTC(Number(y), Number(m) - 1, Number(d) + days);
+  return new Date(utc).toISOString().split('T')[0];
+}
+
+function getQuadrantLabel(urgency?: string, importance?: string): string {
+  if (urgency === 'high' && importance === 'high') return 'Q1 Fazer Agora';
+  if (urgency === 'low' && importance === 'high') return 'Q2 Agendar';
+  if (urgency === 'high' && importance === 'low') return 'Q3 Rápido';
+  if (urgency === 'low' && importance === 'low') return 'Q4 Depois';
+  return 'Sem classificação';
+}
+
+function buildCompactAiContext(
+  data: {
+    courses: Course[];
+    tasks: Task[];
+    topics: StudyTopic[];
+    personalBills: PersonalBill[];
+    personalAppointments: PersonalAppointment[];
+  },
+  todayStr: string
+): string {
+  const courseMap = new Map<string, Course>();
+  for (const c of data.courses) {
+    if (c?.id) courseMap.set(c.id, c);
+  }
+
+  const pendingTasks = data.tasks.filter((t) => t && t.status !== 'done');
+  const unclassifiedCount = pendingTasks.filter(
+    (t) =>
+      (t.urgency !== 'high' && t.urgency !== 'low') ||
+      (t.importance !== 'high' && t.importance !== 'low')
+  ).length;
+
+  const taskLines = [...pendingTasks]
+    .sort((a, b) => String(a.dueDate || '9999').localeCompare(String(b.dueDate || '9999')))
+    .slice(0, 20)
+    .map((t) => {
+      const c = courseMap.get(t.courseId);
+      const due = String(t.dueDate || '');
+      const tag = !due
+        ? 'sem_prazo'
+        : due < todayStr
+        ? 'ATRASADA'
+        : due === todayStr
+        ? 'HOJE'
+        : 'no_prazo';
+      return `- "${t.name}" | ${c?.code || 'Geral'} | ${t.type} | entrega:${formatDateBR(due)} (${tag}) | matriz:${getQuadrantLabel(t.urgency, t.importance)}`;
+    });
+
+  const in14Days = addDaysISO(todayStr, 14);
+  const examLines = data.courses
+    .flatMap((c) =>
+      (Array.isArray(c?.grades) ? c.grades : [])
+        .filter((g) => g?.date && String(g.date) >= todayStr && String(g.date) <= in14Days)
+        .map((g) => ({ code: c.code, name: g.name, date: String(g.date) }))
+    )
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(0, 10)
+    .map((e) => `- ${formatDateBR(e.date)} | [${e.code}] ${e.name}`);
+
+  const pendingBills = data.personalBills.filter((b) => b && b.status !== 'paid');
+  const totalBills = pendingBills.reduce((acc, b) => acc + (Number(b.amount) || 0), 0);
+  const in10Days = addDaysISO(todayStr, 10);
+  const billLines = [...pendingBills]
+    .filter((b) => !b.dueDate || String(b.dueDate) <= in10Days)
+    .sort((a, b) => String(a.dueDate || '').localeCompare(String(b.dueDate || '')))
+    .slice(0, 12)
+    .map((b) => {
+      const due = String(b.dueDate || '');
+      const tag = !due
+        ? 'sem_data'
+        : due < todayStr
+        ? 'ATRASADA'
+        : due === todayStr
+        ? 'VENCE_HOJE'
+        : 'proxima';
+      return `- "${b.title}" | R$ ${Number(b.amount || 0).toFixed(2)} | venc:${formatDateBR(due)} (${tag})`;
+    });
+
+  const in7Days = addDaysISO(todayStr, 7);
+  const appLines = data.personalAppointments
+    .filter((a) => a && !a.completed && (!a.date || String(a.date) <= in7Days))
+    .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+    .slice(0, 10)
+    .map(
+      (a) =>
+        `- "${a.title}" | ${formatDateBR(a.date)}${a.time ? ` às ${a.time}` : ''}`
+    );
+
+  const reviewLines = data.topics
+    .filter((r) => r?.nextReviewDate && r.nextReviewDate <= todayStr)
+    .slice(0, 10)
+    .map((r) => {
+      const c = courseMap.get(r.courseId);
+      return `- "${r.name}" (${c?.code || 'Geral'})`;
+    });
+
+  return [
+    `DATA DE HOJE (Brasília): ${formatDateBR(todayStr)} (${todayStr})`,
+    `ATIVIDADES PENDENTES (${pendingTasks.length} total, ${unclassifiedCount} sem classificação Eisenhower):`,
+    taskLines.length > 0 ? taskLines.join('\n') : '- Nenhuma atividade pendente.',
+    '',
+    `PROVAS NOS PRÓXIMOS 14 DIAS:`,
+    examLines.length > 0 ? examLines.join('\n') : '- Nenhuma prova próxima.',
+    '',
+    `CONTAS PESSOAIS PENDENTES (total geral: R$ ${totalBills.toFixed(2)}):`,
+    billLines.length > 0 ? billLines.join('\n') : '- Nenhuma conta próxima/atrasada.',
+    '',
+    `COMPROMISSOS PESSOAIS (próximos 7 dias):`,
+    appLines.length > 0 ? appLines.join('\n') : '- Nenhum compromisso pendente.',
+    '',
+    `REVISÕES PARA HOJE:`,
+    reviewLines.length > 0 ? reviewLines.join('\n') : '- Nenhuma revisão pendente.',
+  ].join('\n');
+}
+
+async function generateGeminiDigestReport(
+  contextText: string
+): Promise<AiDigestReport | null> {
+  const geminiApiKey = process.env.GEMINI_API_KEY?.trim() || '';
+  if (!geminiApiKey) return null;
+
+  const geminiModel = process.env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash';
+  const prompt = [
+    'Você é o consultor do Painel do Estudante gerando um resumo matinal compacto para e-mail.',
+    'Baseie-se apenas nos dados reais abaixo, sem inventar informações.',
+    'Priorize contas/tarefas atrasadas ou de hoje, itens Q1 (Fazer Agora), provas próximas e contas perto do vencimento.',
+    'Responda de forma muito direta (headline <= 10 palavras, summary em 1-2 frases, até 4 topPriorities, até 3 reminders e 1 insight curto).',
+    '',
+    contextText,
+  ].join('\n');
+
+  const generationConfig: Record<string, any> = {
+    temperature: 0.3,
+    maxOutputTokens: 1536,
+    responseMimeType: 'application/json',
+    responseSchema: {
+      type: 'OBJECT',
+      required: ['headline', 'summary', 'topPriorities', 'reminders', 'insight'],
+      properties: {
+        headline: { type: 'STRING' },
+        summary: { type: 'STRING' },
+        topPriorities: {
+          type: 'ARRAY',
+          items: {
+            type: 'OBJECT',
+            required: ['title', 'timeframe', 'category', 'urgency', 'reason'],
+            properties: {
+              title: { type: 'STRING' },
+              timeframe: { type: 'STRING', enum: ['hoje', 'proximos_dias', 'semana'] },
+              category: {
+                type: 'STRING',
+                enum: ['atividade', 'prova', 'financeiro', 'compromisso', 'revisao', 'rotina'],
+              },
+              urgency: { type: 'STRING', enum: ['critical', 'high', 'medium'] },
+              reason: { type: 'STRING' },
+            },
+          },
+        },
+        reminders: {
+          type: 'ARRAY',
+          items: {
+            type: 'OBJECT',
+            required: ['title', 'dueLabel', 'category', 'detail'],
+            properties: {
+              title: { type: 'STRING' },
+              dueLabel: { type: 'STRING' },
+              category: {
+                type: 'STRING',
+                enum: ['financeiro', 'atividade', 'compromisso', 'prova', 'revisao'],
+              },
+              detail: { type: 'STRING' },
+            },
+          },
+        },
+        insight: { type: 'STRING' },
+      },
+    },
+  };
+
+  if (geminiModel.includes('2.5')) {
+    generationConfig.thinkingConfig = { thinkingBudget: 0 };
+  }
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+    geminiModel
+  )}:generateContent?key=${encodeURIComponent(geminiApiKey)}`;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig,
+    }),
+    signal: AbortSignal.timeout(15000),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Gemini HTTP ${res.status}`);
+  }
+
+  const json: any = await res.json();
+  const parts: any[] = json?.candidates?.[0]?.content?.parts || [];
+  const rawText = parts
+    .map((p) => (typeof p?.text === 'string' ? p.text : ''))
+    .join('')
+    .trim();
+
+  if (!rawText) return null;
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    const start = rawText.indexOf('{');
+    const end = rawText.lastIndexOf('}');
+    if (start === -1 || end <= start) return null;
+    parsed = JSON.parse(rawText.slice(start, end + 1));
+  }
+
+  return {
+    headline: String(parsed?.headline || 'Prioridades do dia').slice(0, 140),
+    summary: String(parsed?.summary || '').slice(0, 360),
+    topPriorities: Array.isArray(parsed?.topPriorities)
+      ? parsed.topPriorities.slice(0, 4).map((p: any) => ({
+          title: String(p?.title || '').slice(0, 120),
+          timeframe: String(p?.timeframe || 'hoje'),
+          category: String(p?.category || 'rotina'),
+          urgency: String(p?.urgency || 'high'),
+          reason: String(p?.reason || '').slice(0, 180),
+        }))
+      : [],
+    reminders: Array.isArray(parsed?.reminders)
+      ? parsed.reminders.slice(0, 3).map((r: any) => ({
+          title: String(r?.title || '').slice(0, 110),
+          dueLabel: String(r?.dueLabel || 'Atenção').slice(0, 40),
+          category: String(r?.category || 'atividade'),
+          detail: String(r?.detail || '').slice(0, 160),
+        }))
+      : [],
+    insight: String(parsed?.insight || '').slice(0, 260),
+  };
+}
+
+function getTimeframeEmailLabel(tf: string): string {
+  if (tf === 'hoje') return 'HOJE';
+  if (tf === 'proximos_dias') return 'PRÓX. DIAS';
+  return 'SEMANA';
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Permite GET para Vercel Cron / preview ou POST para disparo manual
   if (req.method !== 'GET' && req.method !== 'POST') {
@@ -429,6 +708,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       tasks,
       topics,
       personalBills,
+      personalAppointments,
       userEmail,
       targetDoc,
       firestoreMode,
@@ -503,6 +783,73 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       contasPendentesHojeOuAtrasadas: dueBills.length,
     };
 
+    // 6. Consultoria IA (Gemini) — degrada graciosamente caso falhe ou não haja chave
+    let aiReport: AiDigestReport | null = null;
+    let aiError: string | undefined;
+    if (process.env.GEMINI_API_KEY?.trim()) {
+      try {
+        const contextText = buildCompactAiContext(
+          {
+            courses,
+            tasks,
+            topics,
+            personalBills,
+            personalAppointments,
+          },
+          todayStr
+        );
+        aiReport = await generateGeminiDigestReport(contextText);
+      } catch (err: any) {
+        aiError = err?.message || 'Falha ao consultar Gemini';
+        console.warn('Consultoria IA ignorada no daily-digest:', aiError);
+      }
+    }
+
+    const aiBlockHtml = aiReport
+      ? `
+      <!-- CONSULTORIA IA (GEMINI) -->
+      <div class="section" style="background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 12px; padding: 16px;">
+        <div class="section-title" style="color: #3730a3; margin-bottom: 8px;">✨ Consultoria IA — O que Priorizar</div>
+        <div style="font-size: 15px; font-weight: 700; color: #1e1b4b; margin-bottom: 4px;">${escapeHtml(aiReport.headline)}</div>
+        <div style="font-size: 13px; color: #312e81; line-height: 1.5; margin-bottom: 12px;">${escapeHtml(aiReport.summary)}</div>
+        ${
+          aiReport.topPriorities.length > 0
+            ? `<div style="margin-bottom: 10px;">
+                ${aiReport.topPriorities
+                  .map(
+                    (p, idx) => `
+                  <div style="background: #ffffff; border: 1px solid #e0e7ff; border-radius: 8px; padding: 10px; margin-bottom: 6px;">
+                    <div style="font-size: 13px; font-weight: 600; color: #1e293b;">
+                      <span style="display: inline-block; background: #4f46e5; color: #ffffff; border-radius: 999px; padding: 1px 6px; font-size: 10px; margin-right: 6px;">${idx + 1}</span>
+                      <span style="display: inline-block; background: #e0e7ff; color: #3730a3; border-radius: 4px; padding: 1px 5px; font-size: 10px; font-weight: 700; margin-right: 6px;">${escapeHtml(getTimeframeEmailLabel(p.timeframe))}</span>
+                      ${escapeHtml(p.title)}
+                    </div>
+                    <div style="font-size: 12px; color: #475569; margin-top: 3px;">${escapeHtml(p.reason)}</div>
+                  </div>`
+                  )
+                  .join('')}
+              </div>`
+            : ''
+        }
+        ${
+          aiReport.reminders.length > 0
+            ? `<div style="font-size: 12px; color: #312e81; margin-bottom: 8px;">
+                <b>Lembretes:</b> ${aiReport.reminders
+                  .map((r) => `${escapeHtml(r.title)} (${escapeHtml(r.dueLabel)})`)
+                  .join(' • ')}
+              </div>`
+            : ''
+        }
+        ${
+          aiReport.insight
+            ? `<div style="font-size: 12px; color: #3730a3; background: #ffffff; border-left: 3px solid #4f46e5; padding: 8px 10px; border-radius: 4px;">
+                <b>Dica do dia:</b> ${escapeHtml(aiReport.insight)}
+              </div>`
+            : ''
+        }
+      </div>`
+      : '';
+
     // Gerar HTML do E-mail (Estilo Notion / Modern Clean)
     const emailHtml = `
 <!DOCTYPE html>
@@ -539,6 +886,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     </div>
 
     <div class="content">
+      ${aiBlockHtml}
       <!-- TAREFAS DE HOJE OU ATRASADAS -->
       <div class="section">
         <div class="section-title">🚨 Prazos para Hoje / Atrasadas (${dueTodayOrOverdue.length})</div>
@@ -702,6 +1050,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         message: `E-mail diário enviado com sucesso para ${recipientEmail}!`,
         id: resendJson?.id,
         resendConfigured: true,
+        aiIncluded: Boolean(aiReport),
+        ...(aiError ? { aiError } : {}),
         targetEmail: recipientEmail,
         targetDoc,
         firestoreMode,
@@ -714,6 +1064,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       success: true,
       mode: 'preview',
       resendConfigured: Boolean(apiKey),
+      aiIncluded: Boolean(aiReport),
+      ...(aiError ? { aiError } : {}),
       firestoreMode,
       targetDoc,
       targetEmail: recipientEmail,

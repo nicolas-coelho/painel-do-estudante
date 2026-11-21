@@ -33,6 +33,8 @@ export interface Course {
 
 export type TaskStatus = 'todo' | 'in_progress' | 'done';
 export type TaskType = 'Trabalho' | 'Prova' | 'Exercício' | 'Leitura' | 'Outro';
+export type PriorityLevel = 'high' | 'low';
+export type EisenhowerQuadrant = 'do_now' | 'schedule' | 'delegate' | 'eliminate';
 
 export interface Task {
   id: string;
@@ -42,6 +44,8 @@ export interface Task {
   type: TaskType;
   dueDate: string;
   notes?: string;
+  urgency?: PriorityLevel;
+  importance?: PriorityLevel;
 }
 
 export type ReviewResult = 'Estudo' | 'Acerto' | 'Erro';
@@ -146,5 +150,42 @@ export interface PersonalAppointment {
   completed: boolean;
   notes?: string;
   source?: 'manual' | 'calendar';
+}
+
+// ==================== CONSULTORIA IA (GEMINI) ====================
+
+export type AdviceUrgency = 'critical' | 'high' | 'medium';
+export type AdviceCategory =
+  | 'atividade'
+  | 'prova'
+  | 'financeiro'
+  | 'compromisso'
+  | 'revisao'
+  | 'rotina';
+
+export interface AiPriorityAction {
+  title: string;
+  timeframe: 'hoje' | 'proximos_dias' | 'semana';
+  category: AdviceCategory;
+  urgency: AdviceUrgency;
+  reason: string;
+}
+
+export interface AiReminderItem {
+  title: string;
+  dueLabel: string;
+  category: 'financeiro' | 'atividade' | 'compromisso' | 'prova' | 'revisao';
+  detail: string;
+}
+
+export interface AiAdvisoryReport {
+  generatedAt: string;
+  referenceDate: string;
+  model: string;
+  headline: string;
+  summary: string;
+  topPriorities: AiPriorityAction[];
+  reminders: AiReminderItem[];
+  insight: string;
 }
 
