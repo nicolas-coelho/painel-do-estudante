@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import {
   Course,
   Task,
+  PriorityLevel,
   StudyTopic,
   StudySession,
   NotebookNote,
   PersonalBill,
   PersonalAppointment,
 } from './types';
+import { applyTaskPriority, isValidPriorityLevel } from './priorityUtils';
 import {
   initialCourses,
   initialTasks,
@@ -561,16 +563,24 @@ export const App: React.FC = () => {
         new Date().toISOString().split('T')[0];
       const type = (urlParams.get('type') as any) || 'Trabalho';
       const notes = urlParams.get('notes') || 'Adicionado via Gemini / Gmail';
+      const rawUrgency = urlParams.get('urgency');
+      const rawImportance = urlParams.get('importance');
+      const urgency: PriorityLevel | '' = isValidPriorityLevel(rawUrgency) ? rawUrgency : '';
+      const importance: PriorityLevel | '' = isValidPriorityLevel(rawImportance) ? rawImportance : '';
 
-      const newTask: Task = {
-        id: `task-${Date.now()}`,
-        name,
-        courseId,
-        dueDate,
-        type,
-        status: 'todo',
-        notes,
-      };
+      const newTask: Task = applyTaskPriority(
+        {
+          id: `task-${Date.now()}`,
+          name,
+          courseId,
+          dueDate,
+          type,
+          status: 'todo',
+          notes,
+        },
+        urgency,
+        importance
+      );
 
       handleAddTask(newTask);
       setActiveTab('tasks');
@@ -701,7 +711,16 @@ export const App: React.FC = () => {
 
   const isShowingMockTemplate =
     firebaseUser?.email?.toLowerCase() === 'nicolasplcoelho@gmail.com' &&
-    !courses.some((c) => c.id === 'course-es680' || c.code === 'ES680' || c.code === 'EA513');
+    !courses.some((c) => c.id === 'course-es680' || c.code === 'EA513') &&
+    (courses.length === 0 ||
+      courses.some(
+        (c) =>
+          c.id === 'course-1' ||
+          c.id === 'course-2' ||
+          c.id === 'course-3' ||
+          c.professor?.includes('Santanchè') ||
+          c.professor?.includes('Baranauskas')
+      ));
 
   const handleRestoreFromPrincipal = async () => {
     if (!firebaseUser) return;
@@ -714,10 +733,15 @@ export const App: React.FC = () => {
       }
 
       const uid = firebaseUser.uid;
-      const cleanPayload: Record<string, any> = {
-        userEmail: firebaseUser.email || '',
-        displayName: firebaseUser.displayName || '',
-      };
+      const cleanPayload: Record<string, any> = {};
+      const trimmedEmail = firebaseUser.email?.trim() || '';
+      if (trimmedEmail.length >= 3 && trimmedEmail.length <= 254) {
+        cleanPayload.userEmail = trimmedEmail;
+      }
+      const trimmedName = firebaseUser.displayName?.trim() || '';
+      if (trimmedName.length >= 1) {
+        cleanPayload.displayName = trimmedName.slice(0, 100);
+      }
 
       if (Array.isArray(legacyData.courses)) {
         cleanPayload.courses = legacyData.courses;
@@ -766,6 +790,7 @@ export const App: React.FC = () => {
         return;
       }
 
+      cloudHydratedRef.current = true;
       setRestoreBannerDismissed(true);
       showToast('success', 'Dados Restaurados!', 'Suas disciplinas, tarefas e contas originais foram recuperadas com sucesso.');
     } catch {
